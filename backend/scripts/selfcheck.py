@@ -27,13 +27,10 @@ def check_config():
 
 
 async def check_db():
-    from database.connection import engine, redis_client, ping_services
+    from database.connection import ping_services
 
     ok = await ping_services()
     assert ok, "DB/Redis not reachable (fill real credentials in .env)"
-    await engine.dispose()
-    if redis_client:
-        await redis_client.aclose()
     print("database: OK")
 
 
@@ -135,38 +132,58 @@ async def check_models_db():
     )
 
     await init_db()
+    import uuid
+
+    email = f"selfcheck-{uuid.uuid4().hex[:8]}@test.local"
     async with AsyncSessionFactory() as s:
-        u = User(email="selfcheck@test.local", password_hash="x", full_name="Selfcheck")
+        u = User(email=email, password_hash="x", full_name="Selfcheck")
         s.add(u)
         await s.flush()
         s.add(Subscription(user_id=u.id, expires_at=datetime.utcnow()))
         p = FacebookPage(
-            user_id=u.id, page_id="selfcheck_page", page_access_token="t", bot_tone="casual"
+            user_id=u.id,
+            page_id=f"selfcheck_page_{uuid.uuid4().hex[:8]}",
+            page_access_token="t",
+            bot_tone="casual",
         )
         s.add(p)
         await s.flush()
         c = Conversation(page_id=p.id, customer_fb_id="cust_1")
         s.add(c)
         await s.flush()
-        s.add(
-            Message(conversation_id=c.id, sender_type="customer", content="hi"),
-            KnowledgeBase(user_id=u.id, title="KB", content="kb content"),
-            Product(user_id=u.id, name="Widget", price="10", currency="BDT"),
-        )
+        s.add(Message(conversation_id=c.id, sender_type="customer", content="hi"))
+        s.add(KnowledgeBase(user_id=u.id, title="KB", content="kb content"))
+        s.add(Product(user_id=u.id, name="Widget", price="10", currency="BDT"))
         await s.commit()
 
         msg_id = (await s.execute(select(Message.id).limit(1))).scalar_one()
         assert (await s.get(Message, msg_id)).content == "hi"
 
-        dup = User(email="selfcheck@test.local", password_hash="x", full_name="Dup")
+        # capture ids before the rollback expires every object in the session
+        uid, pid, cid = u.id, p.id, c.id
+
+        dup = User(email=email, password_hash="x", full_name="Dup")
         s.add(dup)
         try:
             await s.commit()
             raise AssertionError("unique email must be enforced")
         except IntegrityError:
             await s.rollback()
-        row = (await s.execute(select(User).where(User.email == "selfcheck@test.local"))).scalar_one()
+        row = (await s.execute(select(User).where(User.email == email))).scalar_one()
+        await s.refresh(row)
         assert row.full_name == "Selfcheck"
+
+        # cleanup in FK order so reruns are clean
+        from sqlalchemy import delete
+
+        await s.execute(delete(Message).where(Message.conversation_id == cid))
+        await s.execute(delete(Conversation).where(Conversation.id == cid))
+        await s.execute(delete(KnowledgeBase).where(KnowledgeBase.user_id == uid))
+        await s.execute(delete(Product).where(Product.user_id == uid))
+        await s.execute(delete(FacebookPage).where(FacebookPage.id == pid))
+        await s.execute(delete(Subscription).where(Subscription.user_id == uid))
+        await s.execute(delete(User).where(User.id == uid))
+        await s.commit()
         print("models roundtrip: OK")
 
 
@@ -203,8 +220,11 @@ async def check_app_live():
         with urllib.request.urlopen("http://127.0.0.1:8765/", timeout=2) as r:
             data = json.loads(r.read())
         assert data["status"] == "alive" and data["phase"].startswith("Phase 1")
-        with urllib.request.urlopen("http://127.0.0.1:8765/api/webhook", timeout=2) as r:
-            assert json.loads(r.read()) == {"error": "Verification failed"}
+        try:
+            urllib.request.urlopen("http://127.0.0.1:8765/api/webhook", timeout=2)
+            raise AssertionError("verify without token must be rejected")
+        except urllib.error.HTTPError as e:
+            assert json.loads(e.read()) == {"detail": "Verification failed"}
         req = urllib.request.Request(
             "http://127.0.0.1:8765/api/webhook",
             data=b"{}",
@@ -215,7 +235,7 @@ async def check_app_live():
             urllib.request.urlopen(req, timeout=2)
             raise AssertionError("missing signature must be rejected")
         except urllib.error.HTTPError as e:
-            assert json.loads(e.read()) == {"error": "Invalid signature"}
+            assert json.loads(e.read()) == {"detail": "Invalid signature"}
         print("app routes: OK")
     finally:
         proc.terminate()
@@ -242,14 +262,19 @@ async def check_ai():
 
 
 async def main():
+    from database.connection import close_db
+
     checks = [check_config, check_models, check_safety, check_rag, check_app]
     if len(sys.argv) > 1 and sys.argv[1] == "--db":
         checks.extend([check_db, check_models_db, check_app_live, check_ai])
-    for check in checks:
-        r = check()
-        if asyncio.iscoroutine(r):
-            await r
-    print("ALL CHECKS PASSED")
+    try:
+        for check in checks:
+            r = check()
+            if asyncio.iscoroutine(r):
+                await r
+        print("ALL CHECKS PASSED")
+    finally:
+        await close_db()
 
 
 if __name__ == "__main__":

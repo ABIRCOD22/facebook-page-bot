@@ -67,12 +67,13 @@ class RAGEngine:
         name: str,
         description: str,
         price: str,
+        currency: str = "BDT",
         availability: str = "in_stock",
         category: str = "",
         variants: str = "",
     ):
         full_text = (
-            f"Product: {name}\nDescription: {description}\nPrice: {price}\n"
+            f"Product: {name}\nDescription: {description}\nPrice: {price} {currency}\n"
             f"Availability: {availability}\nCategory: {category}\nVariants: {variants}"
         )
 

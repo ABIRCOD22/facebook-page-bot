@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, Header, Query, Request
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 
 from config import get_settings
 from core.ai_engine import AIEngine
@@ -31,7 +31,7 @@ async def verify_webhook(
         return int(hub_challenge) if hub_challenge.isdigit() else hub_challenge
 
     logger.warning("Webhook verification FAILED")
-    return {"error": "Verification failed"}
+    raise HTTPException(status_code=403, detail="Verification failed")
 
 
 @router.post("/webhook")
@@ -44,7 +44,7 @@ async def receive_webhook(
 
     if not verify_webhook_signature(body, x_hub_signature_256):
         logger.warning("Rejected webhook: invalid signature")
-        return {"error": "Invalid signature"}
+        raise HTTPException(status_code=403, detail="Invalid signature")
 
     try:
         data = await request.json()

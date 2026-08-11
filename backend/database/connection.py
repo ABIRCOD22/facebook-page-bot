@@ -1,6 +1,7 @@
 import logging
 
 import redis.asyncio as redis
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -100,7 +101,7 @@ async def ping_services() -> bool:
     """Selfcheck hook: verify DB + Redis are reachable."""
     try:
         async with engine.connect() as conn:
-            await conn.execute("SELECT 1")
+            await conn.execute(text("SELECT 1"))
         await get_redis().ping()
         return True
     except Exception:
