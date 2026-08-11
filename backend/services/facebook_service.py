@@ -103,4 +103,7 @@ def verify_webhook_signature(payload_body: bytes, signature_header: str) -> bool
     expected = "sha256=" + hmac.new(
         settings.FB_APP_SECRET.encode(), payload_body, hashlib.sha256
     ).hexdigest()
-    return hmac.compare_digest(signature_header, expected)
+    if not hmac.compare_digest(signature_header, expected):
+        logger.warning("Signature mismatch: got=%r expected_prefix=%r", signature_header[:24], expected[:9])
+        return False
+    return True

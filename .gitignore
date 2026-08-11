@@ -8,3 +8,5 @@ node_modules/
 data/
 *.log
 .DS_Store
+tools/
+backend/run_local.bat
