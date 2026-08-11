@@ -48,7 +48,7 @@ async def root():
         "status": "alive",
         "service": "AI Bot SaaS Platform",
         "version": "1.0.0",
-        "phase": "Phase 1 — Auto Reply Bot",
+        "phase": "Phase 1 - Auto Reply Bot",
     }
 
 
