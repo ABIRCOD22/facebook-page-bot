@@ -1,0 +1,26 @@
+# === Web Framework ===
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+
+# === Database ===
+sqlalchemy==2.0.31
+asyncpg==0.29.0
+
+# === Redis ===
+redis==5.0.7
+
+# === AI / LLM ===
+google-genai==1.46.0
+
+# === Vector Database (Local, Free) ===
+# ponytail: chromadb 0.5.0 requires numpy 1.x (np.float_ removed in numpy 2). Upgrade path: bump chromadb to 0.6+ when API changes are validated.
+numpy==1.26.4
+chromadb==0.5.0
+
+# === Image Processing ===
+Pillow==10.4.0
+aiohttp==3.9.5
+
+# === Config ===
+pydantic[email]==2.8.0
+pydantic-settings==2.4.0
