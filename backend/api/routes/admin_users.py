@@ -250,5 +250,5 @@ async def delete_user(user_id: str, admin: User = Depends(require_admin), db=Dep
         await db.delete(row)
     await db.delete(user)
     await db.commit()
-    await log_admin_action(admin.id, "user_delete", f"user={user_id}")
+    await log_admin_action(admin.id, "user_delete", "user", user.id)
     return {"ok": True}
