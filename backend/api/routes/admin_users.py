@@ -1,8 +1,8 @@
-"""Admin user management: list, inspect, suspend/activate, delete, edit subscription."""
+"""Admin user management: list, inspect, create, suspend/activate, delete, edit subscription, impersonate."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
@@ -17,6 +17,8 @@ from models.database_models import (
     User,
 )
 from services.audit_service import log_admin_action
+from utils.password import hash_password
+from utils.token import create_access_token
 
 router = APIRouter(prefix="/api/admin/users", tags=["admin-users"])
 
@@ -31,6 +33,62 @@ class SubscriptionUpdate(BaseModel):
     messages_limit: int | None = None  # maps to max_messages_per_month
     messages_used: int | None = None
     ends_at: str | None = None  # ISO date, maps to expires_at
+
+
+class CreateUserBody(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    role: str = "user"
+    tier: str | None = None  # if omitted: free_trial / active / 7 days
+    messages_limit: int | None = None
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+async def create_user(body: CreateUserBody, admin: User = Depends(require_admin), db=Depends(get_db)):
+    existing = (await db.execute(select(User).where(User.email == body.email))).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
+
+    user = User(
+        email=body.email,
+        password_hash=hash_password(body.password),
+        full_name=body.full_name,
+        role=body.role if body.role in ("user", "admin") else "user",
+        is_active=True,
+    )
+    db.add(user)
+    await db.flush()
+
+    sub = Subscription(
+        user_id=user.id,
+        tier=body.tier or "free_trial",
+        status="active",
+        expires_at=datetime.utcnow() + timedelta(days=7),
+        max_messages_per_month=body.messages_limit,  # None = unlimited
+    )
+    db.add(sub)
+    await db.commit()
+    await db.refresh(user)
+    await log_admin_action(admin.id, "user_create", f"user={user.id} email={body.email}")
+    return {"ok": True, "id": user.id, "email": user.email}
+
+
+@router.post("/{user_id}/impersonate")
+async def impersonate_user(user_id: str, admin: User = Depends(require_admin), db=Depends(get_db)):
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
+
+    token = create_access_token(user.id, user.role)
+    await log_admin_action(admin.id, "user_impersonate", f"user={user.id}")
+    return {
+        "ok": True,
+        "access_token": token,
+        "user": {"id": user.id, "email": user.email, "full_name": user.full_name, "role": user.role},
+    }
 
 
 @router.get("")
