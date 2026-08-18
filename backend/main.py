@@ -179,7 +179,7 @@ async def _seed_demo_knowledge():
                 )
             for faq in faqs:
                 rag.add_document(
-                    document_id=faq.id,
+                    doc_id=faq.id,
                     title=faq.title,
                     content=faq.content,
                     category=faq.category,
@@ -228,7 +228,7 @@ async def _seed_demo_knowledge():
                 )
             for faq in faqs:
                 rag.add_document(
-                    document_id=faq.id,
+                    doc_id=faq.id,
                     title=faq.title,
                     content=faq.content,
                     category=faq.category,
