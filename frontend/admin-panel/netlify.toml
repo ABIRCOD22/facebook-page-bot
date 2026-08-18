@@ -1,0 +1,7 @@
+[build]
+  command = "npm install && npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NEXT_PUBLIC_ADMIN_API_URL = "https://your-space.hf.space"

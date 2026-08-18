@@ -2,12 +2,15 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
+from sqlalchemy import select, update
 
 from config import get_settings
 from core.ai_engine import AIEngine
 from core.conversation_manager import ConversationManager
 from core.image_analyzer import ImageAnalyzer
 from core.safety_layer import SafetyLayer
+from database.connection import AsyncSessionFactory
+from models.database_models import FacebookPage, Subscription
 from services.facebook_service import (
     FacebookService,
     verify_webhook_signature,
@@ -39,18 +42,45 @@ async def receive_webhook(
     request: Request,
     x_hub_signature_256: str = Header(default=""),
 ):
-    """Handle incoming Messenger events from Facebook."""
+    """Handle incoming Messenger events from Facebook.
+
+    Phase 2B: signature is verified against the per-page app_secret,
+    not a global secret. Unknown pages are rejected.
+    """
     body = await request.body()
 
-    if not verify_webhook_signature(body, x_hub_signature_256):
-        logger.warning("Rejected webhook: invalid signature")
-        raise HTTPException(status_code=403, detail="Invalid signature")
-
+    # Phase 2B: parse body first to find which page this is for
     try:
         data = await request.json()
     except Exception:
         logger.error("Invalid JSON payload")
         return {"error": "Invalid payload"}
+
+    if data.get("object") != "page":
+        return {"status": "received"}
+
+    # Phase 2B: look up page from entry[].id, verify signature with that page's secret
+    page = None
+    for entry in data.get("entry", []):
+        page_fb_id = str(entry.get("id"))
+        if page_fb_id:
+            async with AsyncSessionFactory() as session:
+                result = await session.execute(
+                    select(FacebookPage).where(FacebookPage.page_id == page_fb_id)
+                )
+                page = result.scalar_one_or_none()
+            break
+
+    if not page:
+        logger.warning("Rejected webhook: unknown page in payload")
+        raise HTTPException(status_code=403, detail="Unknown page")
+
+    # ponytail: verify signature with the page's own app_secret.
+    # Fallback to global secret only for legacy pages seeded from env (fb_app_secret=None).
+    app_secret = page.fb_app_secret or settings.FB_APP_SECRET
+    if not verify_webhook_signature(body, x_hub_signature_256, app_secret):
+        logger.warning("Rejected webhook: invalid signature for page %s", page.page_id)
+        raise HTTPException(status_code=403, detail="Invalid signature")
 
     if data.get("object") == "page":
         for entry in data.get("entry", []):
@@ -157,6 +187,20 @@ async def _process_message(entry: dict, event: dict):
         )
 
     await FacebookService.set_typing_indicator(sender_fb_id, False, page.page_access_token)
+
+    # ponytail: track usage so trial/quota is real. No hard cap yet — the
+    # bot keeps working; the subscription page shows messages_used. A hard
+    # ceiling (block replies past max_messages_per_month) is a later refinement.
+    try:
+        async with AsyncSessionFactory() as s:
+            await s.execute(
+                update(Subscription)
+                .where(Subscription.id == subscription.id)
+                .values(messages_used=(Subscription.messages_used or 0) + 1)
+            )
+            await s.commit()
+    except Exception as e:  # noqa
+        logger.error("Usage increment failed: %s", e)
 
     if ai_response.should_handover:
         await manager.set_status(conversation.id, "handed_over")

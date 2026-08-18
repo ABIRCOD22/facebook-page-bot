@@ -194,6 +194,101 @@ def check_app():
     print("app import: OK")
 
 
+def check_auth():
+    """Test password hashing and JWT token creation/verification."""
+    from utils.password import hash_password, verify_password
+    from utils.token import create_access_token, decode_access_token
+
+    # password hashing
+    h = hash_password("test123")
+    assert h.startswith("pbkdf2:sha256:")
+    assert verify_password("test123", h)
+    assert not verify_password("wrong", h)
+    assert not verify_password("test123", "bad-format")
+
+    # JWT roundtrip
+    token = create_access_token(user_id=42, role="user")
+    payload = decode_access_token(token)
+    assert payload is not None
+    assert payload["sub"] == "42"
+    assert payload["role"] == "user"
+
+    # bad token
+    assert decode_access_token("garbage") is None
+
+    print("auth: OK")
+
+
+def check_webhook_multitenant():
+    """Verify webhook signature verification works with per-page secrets."""
+    import hashlib
+    import hmac
+
+    from services.facebook_service import verify_webhook_signature
+
+    body = b'{"object":"page","entry":[]}'
+    secret = "test_secret_123"
+    sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+    # correct secret passes
+    assert verify_webhook_signature(body, sig, secret)
+
+    # wrong secret fails
+    assert not verify_webhook_signature(body, sig, "wrong_secret")
+
+    # empty signature fails
+    assert not verify_webhook_signature(body, "", secret)
+
+    # no signature fails
+    assert not verify_webhook_signature(body, None, secret)
+
+    print("webhook multitenant: OK")
+
+
+def check_prompt_builder():
+    """Verify prompt_builder builds correct prompts for each language mode."""
+    from core.prompt_builder import build_prompt
+
+    base_config = {
+        "bot_name": "TestBot",
+        "page_name": "TestStore",
+        "bot_tone": "professional_friendly",
+        "language_mode": "auto",
+        "system_prompt": "",
+        "quick_replies_enabled": True,
+        "fetch_customer_name": True,
+    }
+
+    # default prompt contains tone and rules
+    prompt = build_prompt("hi", "", "", base_config)
+    assert "TestBot" in prompt
+    assert "TestStore" in prompt
+    assert "KNOWLEDGE BASE" in prompt
+
+    # en_only forces English
+    prompt_en = build_prompt("hi", "", "", {**base_config, "language_mode": "en_only"})
+    assert "ALWAYS respond in English" in prompt_en
+
+    # bn_only forces Bangla
+    prompt_bn = build_prompt("hi", "", "", {**base_config, "language_mode": "bn_only"})
+    assert "বাংলা" in prompt_bn
+
+    # bilingual adds both
+    prompt_bi = build_prompt("hi", "", "", {**base_config, "language_mode": "bilingual"})
+    assert "BOTH English and Bangla" in prompt_bi
+
+    # custom system_prompt is injected
+    prompt_custom = build_prompt("hi", "", "", {**base_config, "system_prompt": "Always greet with hello"})
+    assert "Always greet with hello" in prompt_custom
+    assert "CUSTOM INSTRUCTIONS" in prompt_custom
+
+    # quick_replies disabled
+    prompt_noqr = build_prompt("hi", "", "", {**base_config, "quick_replies_enabled": False})
+    assert "Do NOT include quick_replies" in prompt_noqr
+
+    print("prompt builder: OK")
+
+
 async def check_app_live():
     import json
     import subprocess
@@ -264,7 +359,7 @@ async def check_ai():
 async def main():
     from database.connection import close_db
 
-    checks = [check_config, check_models, check_safety, check_rag, check_app]
+    checks = [check_config, check_models, check_safety, check_rag, check_app, check_auth, check_webhook_multitenant, check_prompt_builder]
     if len(sys.argv) > 1 and sys.argv[1] == "--db":
         checks.extend([check_db, check_models_db, check_app_live, check_ai])
     try:

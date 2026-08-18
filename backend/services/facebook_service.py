@@ -96,12 +96,17 @@ async def _call_send_api(url: str, payload: dict) -> bool:
         return False
 
 
-def verify_webhook_signature(payload_body: bytes, signature_header: str) -> bool:
-    """X-Hub-Signature-256 validation (HMAC-SHA256 of raw body with app secret)."""
+def verify_webhook_signature(payload_body: bytes, signature_header: str, app_secret: str = None) -> bool:
+    """X-Hub-Signature-256 validation (HMAC-SHA256 of raw body with app secret).
+
+    ponytail: app_secret param added in Phase 2B for multi-tenant webhook.
+    Falls back to settings.FB_APP_SECRET only for the legacy demo page.
+    """
+    secret = app_secret or settings.FB_APP_SECRET
     if not signature_header:
         return False
     expected = "sha256=" + hmac.new(
-        settings.FB_APP_SECRET.encode(), payload_body, hashlib.sha256
+        secret.encode(), payload_body, hashlib.sha256
     ).hexdigest()
     if not hmac.compare_digest(signature_header, expected):
         logger.warning("Signature mismatch: got=%r expected_prefix=%r", signature_header[:24], expected[:9])

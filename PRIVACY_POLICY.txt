@@ -1,0 +1,103 @@
+PRIVACY POLICY
+Daily Qoutes
+Messenger Bot
+Last updated: August 12, 2026
+
+
+1. WHO WE ARE
+
+This Privacy Policy explains how "Daily Qoutes" (the "Page") collects,
+uses, and protects your information when you interact with the Page and
+its automated customer assistant (the "Bot") on Facebook Messenger.
+
+"Daily Qoutes" is a page that shares motivational quotes, videos, and
+related inspirational content. The Bot is designed to answer your
+questions about the Page, its content, and general inquiries.
+
+
+2. INFORMATION WE COLLECT
+
+When you message the Page on Messenger, the Bot receives the following
+limited information, which Facebook provides automatically:
+
+Your Facebook user ID, used only to identify your chat thread.
+Your publicly visible name and profile picture, as shown on Facebook.
+The content of the messages you send to the Page, including text,
+images, and attachments.
+The time and date of your messages.
+
+We do NOT ask for, and you should never send us via Messenger:
+
+Passwords, PINs, or security codes.
+Full credit or debit card numbers.
+Government IDs, such as passports, national IDs, or driver licenses.
+Banking or financial account credentials.
+
+
+3. HOW WE USE YOUR INFORMATION
+
+We use the information above exclusively for:
+
+Responding to your messages and answering your questions.
+Improving the quality of the Bot's replies and our content.
+Keeping a record of conversations so we can provide consistent support,
+for example, if a human team member follows up.
+
+We do NOT sell, rent, or trade your personal information to third
+parties for any purpose, including advertising.
+
+
+4. AUTOMATED PROCESSING AND AI
+
+Some replies are generated automatically by an AI assistant. When you
+message the Page, the text of your message may be processed by the AI
+service provider (Google Gemini) to generate a helpful reply. Your
+message content is used only for the purpose of generating that reply
+and is not used to train our own models.
+
+
+5. DATA STORAGE AND RETENTION
+
+Conversation records are stored on secured servers and are kept only
+for as long as needed to operate the Page and provide support. You may
+ask us to delete your conversation history at any time, see Section 8
+below for how to contact us.
+
+
+6. THIRD-PARTY SERVICES
+
+The Page is hosted on infrastructure provided by Facebook (Meta) and
+third-party service providers, such as Google Gemini for AI replies
+and our web hosting provider. These providers process your data only
+as needed to run the Bot and in line with their own privacy policies.
+Facebook's own data practices are governed by Meta's Privacy Policy.
+
+
+7. CHILDREN'S PRIVACY
+
+The Page is not directed at children under 13 years of age, and we do
+not knowingly collect information from children under 13. If you
+believe a child has sent us personal information, please contact us
+and we will remove it promptly.
+
+
+8. YOUR RIGHTS AND CONTACT
+
+You have the right to:
+
+Ask what information we hold about you.
+Ask us to correct or delete your information.
+Stop receiving automated replies at any time, by blocking the Page or
+simply stopping messaging it.
+
+To exercise any of these rights, or for any privacy question, contact
+us by messaging the Page on Facebook, or by email at:
+
+[REPLACE THIS WITH YOUR REAL EMAIL ADDRESS, for example dailyquotes@gmail.com]
+
+
+9. CHANGES TO THIS POLICY
+
+We may update this Privacy Policy from time to time. The "Last updated"
+date at the top of this page reflects the latest version. Continued use
+of the Page after changes means you accept the updated policy.

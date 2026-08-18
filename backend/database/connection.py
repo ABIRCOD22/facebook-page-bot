@@ -57,6 +57,9 @@ redis_client = None
 def get_redis():
     global redis_client
     if redis_client is None:
+        if not settings.REDIS_URL:
+            logger.warning("REDIS_URL not set — Redis features disabled")
+            return None
         redis_client = redis.from_url(
             settings.REDIS_URL,
             encoding="utf-8",
@@ -84,16 +87,26 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables created/verified")
 
+    await _ensure_columns()
+
     r = get_redis()
-    await r.ping()
-    logger.info("Redis connected")
+    if r is not None:
+        try:
+            await r.ping()
+            logger.info("Redis connected")
+        except Exception as e:
+            logger.warning("Redis unavailable at startup: %s", e)
 
 
 async def close_db():
     """Cleanup on shutdown."""
     await engine.dispose()
     r = get_redis()
-    await r.close()
+    if r is not None:
+        try:
+            await r.close()
+        except Exception:
+            pass
     logger.info("Database connections closed")
 
 
@@ -102,8 +115,38 @@ async def ping_services() -> bool:
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-        await get_redis().ping()
+        r = get_redis()
+        if r is not None:
+            await r.ping()
         return True
     except Exception:
         logger.exception("Service ping failed")
         return False
+
+
+async def _ensure_columns():
+    """Idempotent ALTER TABLE for Phase 2+ schema evolution.
+
+    ponytail: no alembic yet — schema churn is still high. Once it stabilises,
+    replace this with a proper migration tool (alembic, yoyo, etc.).
+    """
+    alters = [
+        "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS fb_app_id VARCHAR(64)",
+        "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS fb_app_secret VARCHAR(128)",
+        "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS language_mode VARCHAR(20) DEFAULT 'auto'",
+        "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS system_prompt TEXT DEFAULT ''",
+        "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS handover_message TEXT DEFAULT 'Let me connect you with a human agent.'",
+        "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS auto_handover_after INTEGER DEFAULT 0",
+        "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS quick_replies_enabled BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS typing_indicator_enabled BOOLEAN DEFAULT TRUE",
+        "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS fetch_customer_name BOOLEAN DEFAULT TRUE",
+    ]
+    async with engine.begin() as conn:
+        for stmt in alters:
+            try:
+                await conn.execute(text(stmt))
+            except Exception as e:
+                # Column already exists — Postgres throws 42701; other DBs may differ.
+                if "duplicate column" not in str(e).lower() and "already exists" not in str(e).lower():
+                    logger.warning("ALTER failed: %s — %s", stmt, e)
+    logger.info("Schema columns verified")

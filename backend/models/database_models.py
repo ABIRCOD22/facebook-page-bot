@@ -33,6 +33,7 @@ class User(Base):
     phone = Column(String(50))
     role = Column(String(20), default="client")  # super_admin, client
     is_active = Column(Boolean, default=True)
+    totp_secret = Column(String(64), nullable=True)  # admin 2FA secret (base32)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -88,6 +89,20 @@ class FacebookPage(Base):
     # Options: professional_friendly, casual, formal, witty
     welcome_message = Column(Text, default="Hi there! How can I help you today?")
     fallback_message = Column(Text, default="Let me connect you with our team for better assistance!")
+
+    # Phase 2B: per-page app credentials for multi-tenant webhook verification
+    # ponytail: nullable — seeded from env for the demo page; BYOA pages must provide via connect flow
+    fb_app_id = Column(String(64), nullable=True)
+    fb_app_secret = Column(String(128), nullable=True)
+
+    # Phase 2C: bot settings — user-configurable from dashboard
+    language_mode = Column(String(20), default="auto")  # auto, en_only, bn_only, bilingual
+    system_prompt = Column(Text, default="")  # custom instructions injected into prompt
+    handover_message = Column(Text, default="Let me connect you with a human agent.")
+    auto_handover_after = Column(Integer, default=0)  # 0=disabled, N=auto-handover after N failed attempts
+    quick_replies_enabled = Column(Boolean, default=True)
+    typing_indicator_enabled = Column(Boolean, default=True)
+    fetch_customer_name = Column(Boolean, default=True)
 
     user = relationship("User", back_populates="pages")
     conversations = relationship("Conversation", back_populates="page")
@@ -181,3 +196,79 @@ class Product(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="products")
+
+
+# ============================================
+# SYSTEM SETTINGS (Admin singleton row, id="global")
+# ============================================
+class SystemSettings(Base):
+    __tablename__ = "system_settings"
+
+    id = Column(String, primary_key=True, default="global")
+
+    maintenance_mode = Column(Boolean, default=False)
+    maintenance_message = Column(Text, default="We're performing scheduled maintenance. We'll be back shortly!")
+    broadcast_message = Column(Text, default="")
+    default_tier = Column(String(30), default="free_trial")
+
+
+# ============================================
+# ALERT (Admin alert center)
+# ============================================
+class Alert(Base):
+    __tablename__ = "alerts"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    severity = Column(String(20), default="info")  # info, warning, critical
+    type = Column(String(40), nullable=False)  # subscription_expiry, bot_paused, payment_failed, new_signup, ...
+    message = Column(Text, nullable=False)
+    related_user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    is_resolved = Column(Boolean, default=False)
+    snoozed_until = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ============================================
+# AUDIT LOG (Admin action history)
+# ============================================
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    admin_user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    action = Column(String(60), nullable=False)
+    target_type = Column(String(40), nullable=False)
+    target_id = Column(String, nullable=True)
+    detail = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ============================================
+# KB TEMPLATE (Global templates admin pushes to users)
+# ============================================
+class KbTemplate(Base):
+    __tablename__ = "kb_templates"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    title = Column(String(500), nullable=False)
+    content = Column(Text, nullable=False)
+    category = Column(String(50), default="general")
+    created_by = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ============================================
+# PAYMENT (Manual + recorded payments for revenue)
+# ============================================
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    amount = Column(String(50), nullable=False)
+    currency = Column(String(10), default="BDT")
+    method = Column(String(30), default="manual")  # bkash, nagad, rocket, card, manual
+    status = Column(String(20), default="completed")  # pending, completed, failed, refunded
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

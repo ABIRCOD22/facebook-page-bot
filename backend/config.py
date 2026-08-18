@@ -25,6 +25,15 @@ class Settings(BaseSettings):
     # Auth
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
+    JWT_ACCESS_TOKEN_EXPIRE_DAYS: int = 7
+
+    # Admin panel (separate domain, separate JWT secret)
+    ADMIN_JWT_SECRET_KEY: str = ""
+    ADMIN_EMAIL: str = ""
+    ADMIN_PASSWORD: str = ""
+
+    # CORS
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002"
 
     # App
     APP_ENV: str = "development"

@@ -10,3 +10,10 @@ data/
 .DS_Store
 tools/
 backend/run_local.bat
+
+# Next.js build artifacts
+.next/
+*.tsbuildinfo
+
+# Local Netlify folder
+.netlify

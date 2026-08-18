@@ -7,6 +7,7 @@ from google.genai import types
 
 from config import get_settings
 from core.conversation_manager import ConversationManager
+from core.prompt_builder import build_prompt
 from core.rag_engine import RAGEngine
 from core.safety_layer import SafetyLayer
 
@@ -91,10 +92,11 @@ class AIEngine:
         knowledge_context = self._format_knowledge(search_results)
         history_text = self._format_history(history or [])
 
-        prompt = self._build_prompt(
+        prompt = build_prompt(
             user_message=user_message,
             knowledge_context=knowledge_context,
             history_text=history_text,
+            page_config=self.page_config,
             image_context=image_context,
         )
 
@@ -117,73 +119,6 @@ class AIEngine:
                 confidence=0,
                 should_handover=True,
             )
-
-    def _build_prompt(
-        self,
-        user_message: str,
-        knowledge_context: str,
-        history_text: str,
-        image_context: str = None,
-    ) -> str:
-        bot_name = self.page_config.get("bot_name", "AI Assistant")
-        page_name = self.page_config.get("page_name", "Our Business")
-        bot_tone = self.page_config.get("bot_tone", "professional_friendly")
-
-        tone_instructions = {
-            "professional_friendly": "Be professional yet warm and approachable.",
-            "casual": "Be casual, friendly, and conversational. Like chatting with a helpful friend.",
-            "formal": "Be formal and courteous. No slang.",
-            "witty": "Be helpful with a touch of humor. Keep it light but informative.",
-        }
-        tone_guide = tone_instructions.get(bot_tone, tone_instructions["professional_friendly"])
-
-        image_section = (
-            f"=== IMAGE CONTEXT ===\nThe customer sent an image. Analysis: {image_context}\n"
-            if image_context
-            else ""
-        )
-
-        return f"""You are "{bot_name}", the AI customer service assistant for "{page_name}" on Facebook Messenger.
-
-=== YOUR PERSONALITY ===
-{tone_guide}
-
-=== ABSOLUTE RULES ===
-1. ONLY answer using information from the KNOWLEDGE BASE below
-2. If the answer is NOT in the knowledge base, say "I don't have that specific information, but let me connect you with our team!"
-3. NEVER invent prices, product details, or policies
-4. NEVER ask for passwords, full card numbers, or sensitive personal data
-5. Keep responses SHORT (2-4 sentences max unless detailed explanation is needed)
-6. If customer seems angry/frustrated, empathize first then offer human handover
-7. If customer asks to speak to a human, immediately agree
-8. NEVER badmouth competitors
-9. NEVER make promises you can't verify from the knowledge base
-10. Respond in the SAME LANGUAGE the customer uses
-
-=== KNOWLEDGE BASE (Your ONLY source of truth) ===
-{knowledge_context if knowledge_context else "No knowledge base entries found. Only provide general helpful responses and offer to connect with human."}
-
-=== CONVERSATION HISTORY ===
-{history_text if history_text else "This is the start of the conversation."}
-
-{image_section}=== CURRENT CUSTOMER MESSAGE ===
-{user_message}
-
-=== RESPOND IN THIS EXACT JSON FORMAT ===
-{{
-    "response": "Your helpful response here",
-    "confidence": 85,
-    "quick_replies": ["Suggested Reply 1", "Suggested Reply 2"],
-    "should_handover": false
-}}
-
-CONFIDENCE SCORING GUIDE:
-- 90-100: Direct exact match found in knowledge base
-- 70-89: Good match, answer is well-supported by knowledge base
-- 50-69: Partial match, some inference required
-- Below 50: Poor match or no relevant info found -> set should_handover to true
-
-Respond with ONLY the JSON. No other text."""
 
     def _parse_response(self, raw_text: str) -> AIResponse:
         try:

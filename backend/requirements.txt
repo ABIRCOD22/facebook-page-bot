@@ -24,3 +24,9 @@ aiohttp==3.9.5
 # === Config ===
 pydantic[email]==2.8.0
 pydantic-settings==2.4.0
+
+# === Auth ===
+# ponytail: PyJWT for JWT tokens; stdlib hashlib.pbkdf2_hmac for password hashing (zero deps, secure)
+PyJWT==2.9.0
+python-multipart==0.0.12
+pyotp==2.9.0
