@@ -184,6 +184,27 @@ async def _process_message(entry: dict, event: dict):
         image_context=image_context,
     )
 
+    # ponytail: suppress consecutive identical bot replies — Meta's spam
+    # classifier weights exact-repeat responses heavily. If the model
+    # emits the same text twice in a row, fall back to the page's
+    # handover-ish fallback instead of echoing. Ceiling: comparison is
+    # exact-match only; fuzzy similarity is a later refinement.
+    last_bot = None
+    for h in reversed(history):
+        if h.get("sender_type") == "bot":
+            last_bot = h
+            break
+    if (
+        last_bot
+        and last_bot.get("content") == ai_response.text
+        and not ai_response.quick_replies
+    ):
+        logger.info("Duplicate bot reply suppressed for page %s", page_fb_id)
+        ai_response.text = page.fallback_message or "Noted — I'll make sure the right person gets back to you shortly."
+
+    # Humanize: instant replies of identical shape are a bot signature.
+    await asyncio.sleep(SafetyLayer().calculate_typing_delay(ai_response.text))
+
     await manager.add_message(
         conversation_id=conversation.id,
         sender_type="bot",
