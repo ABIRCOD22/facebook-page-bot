@@ -28,10 +28,24 @@ async def verify_webhook(
     hub_verify_token: str = Query(None, alias="hub.verify_token"),
     hub_challenge: str = Query(None, alias="hub.challenge"),
 ):
-    """Facebook verifies the webhook URL with a GET challenge."""
-    if hub_mode == "subscribe" and hub_verify_token == settings.FB_VERIFY_TOKEN:
-        logger.info("Webhook verified by Facebook")
-        return int(hub_challenge) if hub_challenge.isdigit() else hub_challenge
+    """Facebook verifies the webhook URL with a GET challenge.
+
+    Phase 2B: accept per-page verify tokens (BYO apps get a random
+    token per page), falling back to the global env token.
+    """
+    if hub_mode == "subscribe" and hub_verify_token:
+        if hub_verify_token == settings.FB_VERIFY_TOKEN:
+            logger.info("Webhook verified by Facebook (global token)")
+            return int(hub_challenge) if hub_challenge.isdigit() else hub_challenge
+        async with AsyncSessionFactory() as session:
+            page = (
+                await session.execute(
+                    select(FacebookPage).where(FacebookPage.verify_token == hub_verify_token)
+                )
+            ).scalar_one_or_none()
+            if page:
+                logger.info("Webhook verified for tenant page %s", page.page_id)
+                return int(hub_challenge) if hub_challenge.isdigit() else hub_challenge
 
     logger.warning("Webhook verification FAILED")
     raise HTTPException(status_code=403, detail="Verification failed")

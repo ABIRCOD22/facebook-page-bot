@@ -22,6 +22,7 @@ from models.database_models import (
     User,
 )
 from services.audit_service import log_admin_action
+from services.email_service import send_email, welcome_credentials_html
 from utils.password import hash_password
 from utils.token import create_access_token
 
@@ -75,7 +76,20 @@ async def create_user(body: CreateUserBody, admin: User = Depends(require_admin)
     db.add(sub)
     await db.commit()
     await db.refresh(user)
-    await log_admin_action(admin.id, "user_create", f"user={user.id} email={body.email}")
+    await log_admin_action(admin.id, "user_create", "user", user.id, detail=f"email={body.email}")
+
+    # Welcome email with dashboard credentials. Best-effort; never blocks user creation.
+    # ponytail: the plaintext password lives only in the HTTP request and this email —
+    # it cannot be recovered later, so this send must not silently fail. Brevo is down
+    # (or unconfigured) → logged warning; admin can still share creds manually.
+    from config import get_settings
+    await send_email(
+        body.email,
+        "Your Chatrix dashboard is ready",
+        welcome_credentials_html(body.full_name, body.email, body.password, get_settings().CLIENT_PANEL_URL),
+        to_name=body.full_name,
+    )
+
     return {"ok": True, "id": user.id, "email": user.email}
 
 
@@ -88,7 +102,7 @@ async def impersonate_user(user_id: str, admin: User = Depends(require_admin), d
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
 
     token = create_access_token(user.id, user.role)
-    await log_admin_action(admin.id, "user_impersonate", f"user={user.id}")
+    await log_admin_action(admin.id, "user_impersonate", "user", user.id)
     return {
         "ok": True,
         "access_token": token,
@@ -179,7 +193,7 @@ async def suspend_user(user_id: str, body: SuspendBody, admin: User = Depends(re
     if user.subscription:
         user.subscription.status = "suspended"
     await db.commit()
-    await log_admin_action(admin.id, "user_suspend", f"user={user_id} reason={body.reason}")
+    await log_admin_action(admin.id, "user_suspend", "user", user_id, detail=body.reason)
     return {"ok": True}
 
 
@@ -192,7 +206,7 @@ async def activate_user(user_id: str, admin: User = Depends(require_admin), db=D
     if user.subscription and user.subscription.status == "suspended":
         user.subscription.status = "active"
     await db.commit()
-    await log_admin_action(admin.id, "user_activate", f"user={user_id}")
+    await log_admin_action(admin.id, "user_activate", "user", user_id)
     return {"ok": True}
 
 
@@ -217,7 +231,7 @@ async def update_subscription(user_id: str, body: SubscriptionUpdate, admin: Use
         sub.expires_at = datetime.fromisoformat(body.ends_at)
 
     await db.commit()
-    await log_admin_action(admin.id, "subscription_update", f"user={user_id} {body.model_dump(exclude_none=True)}")
+    await log_admin_action(admin.id, "subscription_update", "user", user_id, detail=body.model_dump_json(exclude_none=True))
     return {"ok": True, "subscription": {"tier": sub.tier, "status": sub.status, "messages_limit": sub.max_messages_per_month}}
 
 

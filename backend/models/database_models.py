@@ -95,6 +95,12 @@ class FacebookPage(Base):
     fb_app_id = Column(String(64), nullable=True)
     fb_app_secret = Column(String(128), nullable=True)
 
+    # Phase 3: per-tenant webhook verify token + business scan results
+    verify_token = Column(String(64), nullable=True)  # hub.verify_token for the page's own app webhook
+    business_profile = Column(Text, nullable=True)  # JSON summary from the business scanner
+    scan_status = Column(String(20), default="not_scanned")  # not_scanned, pending, done, error
+    scanned_at = Column(DateTime, nullable=True)
+
     # Phase 2C: bot settings — user-configurable from dashboard
     language_mode = Column(String(20), default="auto")  # auto, en_only, bn_only, bilingual
     system_prompt = Column(Text, default="")  # custom instructions injected into prompt

@@ -42,6 +42,15 @@ class Settings(BaseSettings):
     # Graph API
     GRAPH_API_VERSION: str = "v26.0"
 
+    # Email (Brevo — free tier, 300/day, single-sender verification, no domain needed)
+    BREVO_API_KEY: str = ""
+    BREVO_FROM_EMAIL: str = ""
+    BREVO_FROM_NAME: str = "Chatrix Support"
+
+    # Public URLs used in emails and webhook callbacks
+    CLIENT_PANEL_URL: str = "https://fb-autoreply-client.netlify.app"
+    WEBHOOK_PUBLIC_URL: str = "https://facebook-page-bot-rdkt.onrender.com"
+
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent / ".env",
         env_file_encoding="utf-8",

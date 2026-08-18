@@ -54,7 +54,7 @@ async def pause_bot(page_id: str, admin: User = Depends(require_admin), db=Depen
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Page not found")
     page.is_active = False
     await db.commit()
-    await log_admin_action(admin.id, "bot_pause", f"page={page_id}")
+    await log_admin_action(admin.id, "bot_pause", "page", page_id)
     return {"ok": True, "is_active": False}
 
 
@@ -65,5 +65,5 @@ async def resume_bot(page_id: str, admin: User = Depends(require_admin), db=Depe
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Page not found")
     page.is_active = True
     await db.commit()
-    await log_admin_action(admin.id, "bot_resume", f"page={page_id}")
+    await log_admin_action(admin.id, "bot_resume", "page", page_id)
     return {"ok": True, "is_active": True}
