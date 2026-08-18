@@ -41,7 +41,7 @@ function ConversationDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <Button asChild variant="ghost" size="sm"><Link href="/admin/conversations"><ArrowLeft className="w-4 h-4" /> Back</Link></Button>
+        <Button asChild variant="ghost" size="sm"><Link prefetch={false} href="/admin/conversations"><ArrowLeft className="w-4 h-4" /> Back</Link></Button>
         <Button variant="destructive" size="sm" onClick={del}><Trash2 className="w-4 h-4" /> Delete</Button>
       </div>
 

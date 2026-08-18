@@ -120,7 +120,7 @@ function RegisterForm() {
               </Button>
               <p className="text-sm text-muted-foreground">
                 Already have an account?{" "}
-                <Link href="/" className="text-primary hover:underline font-medium">
+                <Link prefetch={false} href="/" className="text-primary hover:underline font-medium">
                   Sign in
                 </Link>
               </p>

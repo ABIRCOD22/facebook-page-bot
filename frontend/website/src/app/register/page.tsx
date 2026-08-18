@@ -78,7 +78,7 @@ export default function RegisterPage() {
                   <LinkButton href={clientPanelLoginUrl()} variant="gradient" size="lg" fullWidth rightIcon={<ArrowRight className="h-4 w-4" />}>
                     Go to your dashboard
                   </LinkButton>
-                  <Link href="/features" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+                  <Link prefetch={false} href="/features" className={buttonVariants({ variant: "ghost", size: "sm" })}>
                     Explore features first
                   </Link>
                 </div>
@@ -150,7 +150,7 @@ export default function RegisterPage() {
                   </p>
                   <p className="text-center text-sm text-soft">
                     Already have an account?{" "}
-                    <Link href={SITE.clientPanelUrl} className="ulink">Log in</Link>
+                    <Link prefetch={false} href={SITE.clientPanelUrl} className="ulink">Log in</Link>
                   </p>
                 </form>
               )}

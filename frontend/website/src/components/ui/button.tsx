@@ -8,7 +8,7 @@
  *   - buttonVariants            (cva instance for class composition)
  *   - Button                    (base <button> with every variant/size)
  *   - IconButton                (square icon-only button, sized by size)
- *   - LinkButton                (renders a Next.js <Link> with button styles)
+ *   - LinkButton                (renders a Next.js <Link prefetch={false}> with button styles)
  *   - LoadingButton             (shows spinner + disables while loading)
  *   - SplitButton               (primary action + dropdown caret)
  *   - ButtonGroup               (joined group with dividers)
@@ -245,7 +245,7 @@ const LinkButton = React.forwardRef<HTMLAnchorElement, LinkButtonProps>(
     ref
   ) => {
     return (
-      <Link
+      <Link prefetch={false}
         ref={ref}
         href={href}
         className={cn(

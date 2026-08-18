@@ -39,7 +39,7 @@ export function Navbar() {
     <header className={cn("nav", scrolled && "scrolled")}>
       <a href="#main" className="skip-link">Skip to content</a>
       <div className="container-x nav-inner">
-        <Link href="/" className="brand" aria-label={`${SITE.name} home`}>
+        <Link prefetch={false} href="/" className="brand" aria-label={`${SITE.name} home`}>
           <span className="brand-mark">
             <Bot className="h-5 w-5" />
           </span>
@@ -48,7 +48,7 @@ export function Navbar() {
 
         <nav className="nav-links" aria-label="Primary">
           {NAV_LINKS.map((l) => (
-            <Link
+            <Link prefetch={false}
               key={l.href}
               href={l.href}
               className={cn("nav-link", isActive(l.href) && "active")}
@@ -60,7 +60,7 @@ export function Navbar() {
         </nav>
 
         <div className="nav-cta">
-          <Link href="/register" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "desktop-cta")}>
+          <Link prefetch={false} href="/register" className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "desktop-cta")}>
             Log in
           </Link>
           <LinkButton href="/register" variant="gradient" size="sm" className="desktop-cta" rightIcon={<ArrowRight className="h-4 w-4" />}>
@@ -79,14 +79,14 @@ export function Navbar() {
 
       <div className={cn("mobile-menu container-x", open && "open")}>
         {NAV_LINKS.map((l) => (
-          <Link key={l.href} href={l.href} className="nav-link">
+          <Link prefetch={false} key={l.href} href={l.href} className="nav-link">
             {l.label}
           </Link>
         ))}
-        <Link href="/register" className={cn(buttonVariants({ variant: "gradient" }), "btn-block mt-2")}>
+        <Link prefetch={false} href="/register" className={cn(buttonVariants({ variant: "gradient" }), "btn-block mt-2")}>
           Get Started
         </Link>
-        <Link href="/register" className={cn(buttonVariants({ variant: "ghost" }), "btn-block")}>
+        <Link prefetch={false} href="/register" className={cn(buttonVariants({ variant: "ghost" }), "btn-block")}>
           Log in
         </Link>
       </div>

@@ -21,7 +21,7 @@ function Kpi({ icon, label, value, sub, href }: { icon: React.ReactNode; label: 
       </CardContent>
     </Card>
   )
-  return href ? <Link href={href}>{body}</Link> : body
+  return href ? <Link prefetch={false} href={href}>{body}</Link> : body
 }
 
 export default function OverviewPage() {
@@ -61,7 +61,7 @@ export default function OverviewPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-lg">Recent Users</CardTitle>
-            <Button asChild variant="ghost" size="sm"><Link href="/admin/users">View all</Link></Button>
+            <Button asChild variant="ghost" size="sm"><Link prefetch={false} href="/admin/users">View all</Link></Button>
           </CardHeader>
           <CardContent className="space-y-2">
             {(o.recent_users ?? []).map((u: any) => (
@@ -81,7 +81,7 @@ export default function OverviewPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-lg">Recent Alerts</CardTitle>
-          <Button asChild variant="ghost" size="sm"><Link href="/admin/alerts">Alert Center</Link></Button>
+          <Button asChild variant="ghost" size="sm"><Link prefetch={false} href="/admin/alerts">Alert Center</Link></Button>
         </CardHeader>
         <CardContent className="space-y-2">
           {(o.recent_alerts ?? []).map((a: any) => {

@@ -21,7 +21,7 @@ export function BentoFeatures() {
             <span className="eyebrow"><span className="h-1.5 w-1.5 rounded-full bg-primary" /> Features</span>
             <h2 className="h2 mt-2">A facebook page bot that does it all</h2>
           </div>
-          <Link href="/features" className={buttonVariants({ variant: "outline", size: "sm" })}>
+          <Link prefetch={false} href="/features" className={buttonVariants({ variant: "outline", size: "sm" })}>
             All features <ArrowRight className="h-4 w-4" />
           </Link>
         </Reveal>

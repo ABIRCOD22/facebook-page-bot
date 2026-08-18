@@ -56,7 +56,7 @@ export default function SubscriptionPage() {
             <p className="font-medium">Your trial has ended</p>
             <p className="text-sm text-muted-foreground">Renew your plan to keep your bot answering customers.</p>
           </div>
-          <Link href="/payment" className={buttonVariants()}>
+          <Link prefetch={false} href="/payment" className={buttonVariants()}>
             Renew now
           </Link>
         </div>

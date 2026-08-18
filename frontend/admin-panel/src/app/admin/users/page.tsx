@@ -177,7 +177,7 @@ export default function UsersPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <Button asChild variant="ghost" size="icon" title="View">
-                          <Link href={`/admin/users/user-detail?id=${u.id}`}><Eye className="w-4 h-4" /></Link>
+                          <Link prefetch={false} href={`/admin/users/user-detail?id=${u.id}`}><Eye className="w-4 h-4" /></Link>
                         </Button>
                         {u.is_active ? (
                           <Button variant="ghost" size="icon" title="Suspend" disabled={busy === u.id + "suspend"} onClick={() => act(u.id, "suspend")}>

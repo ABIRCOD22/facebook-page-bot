@@ -29,7 +29,7 @@ export function TrialBand() {
               <LinkButton href="/register" variant="white" size="xl" rightIcon={<ArrowRight className="h-5 w-5" />}>
                 Register a AI moderator for your page
               </LinkButton>
-              <Link href="/pricing" className={buttonVariants({ variant: "ghost", size: "xl", className: "text-white" })}>
+              <Link prefetch={false} href="/pricing" className={buttonVariants({ variant: "ghost", size: "xl", className: "text-white" })}>
                 View pricing
               </Link>
             </div>

@@ -77,7 +77,7 @@ export default function AboutPage() {
             <LinkButton href="/register" variant="gradient" size="xl" rightIcon={<ArrowRight className="h-5 w-5" />}>
               Start free trial
             </LinkButton>
-            <Link
+            <Link prefetch={false}
               href={`mailto:${SITE.email}`}
               className={buttonVariants({ variant: "ghost", size: "lg", className: "text-soft" })}
             >

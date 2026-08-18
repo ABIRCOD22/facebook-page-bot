@@ -37,7 +37,7 @@ export function Hero() {
               <LinkButton href="/register" variant="gradient" size="xl" rightIcon={<ArrowRight className="h-5 w-5" />}>
                 Register a AI moderator
               </LinkButton>
-              <Link href="/features" className={buttonVariants({ variant: "outline", size: "xl" })}>
+              <Link prefetch={false} href="/features" className={buttonVariants({ variant: "outline", size: "xl" })}>
                 See features
               </Link>
             </div>

@@ -74,7 +74,7 @@ export default function BotsPage() {
                 <Badge variant={b.is_active ? "success" : "destructive"}>{b.is_active ? "Running" : "Paused"}</Badge>
               </div>
               <div className="flex gap-2">
-                <Link href={`/admin/users/user-detail?id=${b.owner_id}`} className="flex-1">
+                <Link prefetch={false} href={`/admin/users/user-detail?id=${b.owner_id}`} className="flex-1">
                   <Button variant="outline" size="sm" className="w-full">Owner</Button>
                 </Link>
                 <Button

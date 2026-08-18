@@ -28,10 +28,10 @@ export default function PaymentPage() {
             For now, message us to renew and we&apos;ll activate your plan.
           </div>
           <div className="flex flex-col gap-2">
-            <Link href="/dashboard" className={buttonVariants({ className: "w-full" })}>
+            <Link prefetch={false} href="/dashboard" className={buttonVariants({ className: "w-full" })}>
               Back to dashboard
             </Link>
-            <Link href="/dashboard/subscription" className={buttonVariants({ variant: "outline", className: "w-full" })}>
+            <Link prefetch={false} href="/dashboard/subscription" className={buttonVariants({ variant: "outline", className: "w-full" })}>
               View plans
             </Link>
           </div>

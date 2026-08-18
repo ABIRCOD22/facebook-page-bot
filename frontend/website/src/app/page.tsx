@@ -85,7 +85,7 @@ export default function HomePage() {
             <Faq items={FAQ} />
           </div>
           <div className="center mt-6">
-            <Link href="/features" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <Link prefetch={false} href="/features" className={buttonVariants({ variant: "outline", size: "sm" })}>
               More on features <ArrowRight className="h-4 w-4" />
             </Link>
           </div>

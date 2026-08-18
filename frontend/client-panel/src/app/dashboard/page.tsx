@@ -40,7 +40,7 @@ export default function OverviewPage() {
         {pageName === null && !error && (
           <div className="mt-3 p-3 rounded-xl border border-amber-300 bg-amber-50 text-sm flex items-center justify-between gap-3">
             <span className="text-amber-800">Your bot is idle — connect a Facebook page to go live.</span>
-            <Link href="/dashboard/pages">
+            <Link prefetch={false} href="/dashboard/pages">
               <Button size="sm" variant="outline">Connect a page</Button>
             </Link>
           </div>
@@ -49,7 +49,7 @@ export default function OverviewPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {stats.map((s) => (
-          <Link key={s.label} href={s.href}>
+          <Link prefetch={false} key={s.label} href={s.href}>
             <Card className="hover:border-primary/50 transition-colors cursor-pointer">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium text-muted-foreground">{s.label}</CardTitle>
@@ -68,9 +68,9 @@ export default function OverviewPage() {
           <CardTitle className="text-lg">Quick start</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-3">
-          <Link href="/dashboard/settings"><Button>Configure bot</Button></Link>
-          <Link href="/dashboard/products"><Button variant="outline">Add products</Button></Link>
-          <Link href="/dashboard/knowledge"><Button variant="outline">Teach the bot</Button></Link>
+          <Link prefetch={false} href="/dashboard/settings"><Button>Configure bot</Button></Link>
+          <Link prefetch={false} href="/dashboard/products"><Button variant="outline">Add products</Button></Link>
+          <Link prefetch={false} href="/dashboard/knowledge"><Button variant="outline">Teach the bot</Button></Link>
         </CardContent>
       </Card>
     </div>

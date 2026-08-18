@@ -101,7 +101,7 @@ function UserDetailPage() {
 
   return (
     <div className="space-y-6">
-      <Button asChild variant="ghost" size="sm"><Link href="/admin/users"><ArrowLeft className="w-4 h-4" /> Back to users</Link></Button>
+      <Button asChild variant="ghost" size="sm"><Link prefetch={false} href="/admin/users"><ArrowLeft className="w-4 h-4" /> Back to users</Link></Button>
 
       <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
         <div>

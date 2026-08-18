@@ -78,7 +78,7 @@ export default function ConversationsPage() {
                     <td className="px-4 py-3"><Badge variant={c.status === "active" ? "success" : "outline"}>{c.status}</Badge></td>
                     <td className="px-4 py-3">{c.message_count}</td>
                     <td className="px-4 py-3 text-right">
-                      <Button asChild variant="ghost" size="sm"><Link href={`/admin/conversations/conversation-detail?id=${c.id}`}>View</Link></Button>
+                      <Button asChild variant="ghost" size="sm"><Link prefetch={false} href={`/admin/conversations/conversation-detail?id=${c.id}`}>View</Link></Button>
                     </td>
                   </tr>
                 ))}

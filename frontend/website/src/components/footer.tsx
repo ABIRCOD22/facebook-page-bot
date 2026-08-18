@@ -14,7 +14,7 @@ export function Footer() {
       <div className="container-x">
         <div className="footer-grid">
           <div>
-            <Link href="/" className="brand" style={{ color: "#fff" }} aria-label={`${SITE.name} home`}>
+            <Link prefetch={false} href="/" className="brand" style={{ color: "#fff" }} aria-label={`${SITE.name} home`}>
               <span className="brand-mark">
                 <Bot className="h-5 w-5" />
               </span>
@@ -34,7 +34,7 @@ export function Footer() {
             <div key={col.title}>
               <h4 className="footer-title">{col.title}</h4>
               {col.links.map((l) => (
-                <Link key={l.href + l.label} href={l.href} className="footer-link">
+                <Link prefetch={false} key={l.href + l.label} href={l.href} className="footer-link">
                   {l.label}
                 </Link>
               ))}
@@ -45,9 +45,9 @@ export function Footer() {
         <div className="footer-bottom">
           <span>© {year} {SITE.name}. All rights reserved.</span>
           <span className="inline-flex items-center gap-4">
-            <Link href="/about" className="hover:text-white">About</Link>
-            <Link href="/pricing" className="hover:text-white">Pricing</Link>
-            <Link href="/register" className="hover:text-white inline-flex items-center gap-1">
+            <Link prefetch={false} href="/about" className="hover:text-white">About</Link>
+            <Link prefetch={false} href="/pricing" className="hover:text-white">Pricing</Link>
+            <Link prefetch={false} href="/register" className="hover:text-white inline-flex items-center gap-1">
               Get started <ArrowUpRight className="h-3.5 w-3.5" />
             </Link>
           </span>
