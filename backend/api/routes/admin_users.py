@@ -12,6 +12,7 @@ from models.database_models import (
     Conversation,
     FacebookPage,
     KnowledgeBase,
+    Message,
     Product,
     Subscription,
     User,
@@ -223,8 +224,17 @@ async def delete_user(user_id: str, admin: User = Depends(require_admin), db=Dep
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     # ponytail: hard delete — remove child rows first to satisfy FK constraints (no cascade configured).
-    await db.execute(select(FacebookPage).where(FacebookPage.user_id == user_id))
-    for model in (FacebookPage, Product, KnowledgeBase, Conversation, Subscription):
+    # Conversations/messages hang off pages (page_id), not the user directly.
+    pages = (await db.execute(select(FacebookPage).where(FacebookPage.user_id == user_id))).scalars().all()
+    for p in pages:
+        convs = (await db.execute(select(Conversation).where(Conversation.page_id == p.id))).scalars().all()
+        for c in convs:
+            msgs = (await db.execute(select(Message).where(Message.conversation_id == c.id))).scalars().all()
+            for m in msgs:
+                await db.delete(m)
+            await db.delete(c)
+        await db.delete(p)
+    for model in (Product, KnowledgeBase, Subscription):
         rows = (await db.execute(select(model).where(model.user_id == user_id))).scalars().all()
         for r in rows:
             await db.delete(r)
