@@ -14,6 +14,9 @@ google-genai==1.46.0
 
 # === Vector Database (Local, Free) ===
 # ponytail: chromadb 0.5.0 requires numpy 1.x (np.float_ removed in numpy 2). Upgrade path: bump chromadb to 0.6+ when API changes are validated.
+# ponytail: onnxruntime pinned to 1.20.1 - newer ORT x64 wheels assume newer CPU features; 1.20.1 is the last broad-x86-safe line. Upgrade path: revisit when Render free tier CPU is known or ORT ships generic wheels again.
+# chroma-hnswlib 0.7.3 (hard-pinned by chromadb) is sdist-only for cp312 -> source build uses AVX-512 flags -> SIGILL on Zen 2 (no AVX-512). Dockerfile force-reinstalls the 0.7.6 manylinux wheel (portable, runtime dispatch) after pip install.
+onnxruntime==1.20.1
 numpy==1.26.4
 chromadb==0.5.0
 

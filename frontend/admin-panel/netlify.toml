@@ -4,4 +4,4 @@
 
 [build.environment]
   NODE_VERSION = "20"
-  NEXT_PUBLIC_ADMIN_API_URL = "https://your-space.hf.space"
+  NEXT_PUBLIC_ADMIN_API_URL = "https://facebook-page-bot-rdkt.onrender.com"

@@ -1,0 +1,9 @@
+[build]
+  command = "npm install && npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NEXT_PUBLIC_API_URL = "https://facebook-page-bot-rdkt.onrender.com"
+  NEXT_PUBLIC_CLIENT_PANEL_URL = "https://fb-autoreply-client.netlify.app"
+  NEXT_PUBLIC_SITE_URL = "https://fb-autoreply-website.netlify.app"
