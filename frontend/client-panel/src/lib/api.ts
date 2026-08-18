@@ -180,8 +180,39 @@ class ApiClient {
     })
   }
 
+  async connectByoApp(appId: string, appSecret: string, code: string, redirectUri: string) {
+    return this.request<{ status: string; id: string; page_id: string; page_name: string }>("/api/client/pages/connect-byo", {
+      method: "POST",
+      body: JSON.stringify({ app_id: appId, app_secret: appSecret, code, redirect_uri: redirectUri }),
+    })
+  }
+
   async listPages() {
-    return this.request<{ pages: Array<{ id: string; page_id: string; page_name: string; bot_name: string; is_active: boolean; connected_at: string }> }>("/api/client/pages")
+    return this.request<{
+      pages: Array<{
+        id: string
+        page_id: string
+        page_name: string
+        bot_name: string
+        is_active: boolean
+        connected_at: string
+        scan_status: string
+        scanned_at: string | null
+        business_profile: {
+          page_name: string
+          category: string
+          summary: string
+          tone: string
+          style: string
+          product_terms: string[]
+          website_url: string
+        } | null
+      }>
+    }>("/api/client/pages")
+  }
+
+  async scanPage(id: string) {
+    return this.request<{ status: string; profile: Record<string, unknown>; kb_added: number; posts_scanned: number; website_scanned: boolean }>(`/api/client/pages/${id}/scan`, { method: "POST" })
   }
 
   async disconnectPage(id: string) {
