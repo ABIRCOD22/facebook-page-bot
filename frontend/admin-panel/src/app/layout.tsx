@@ -5,6 +5,7 @@ import { AuthProvider } from "@/lib/auth-context"
 export const metadata: Metadata = {
   title: "ChatriX Admin - Super Admin Panel",
   description: "Super admin control center for the ChatriX AI bot platform",
+  icons: { icon: "/favicon.svg" },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

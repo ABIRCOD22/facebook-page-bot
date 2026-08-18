@@ -79,6 +79,13 @@ class AdminApiClient {
     return this.request<any>(`/api/admin/users/${id}`)
   }
 
+  async createUser(body: Record<string, any>) {
+    return this.request<{ ok: boolean; id: string }>("/api/admin/users", {
+      method: "POST",
+      body: JSON.stringify(body),
+    })
+  }
+
   async suspendUser(id: string, reason?: string) {
     return this.request<{ ok: boolean }>(`/api/admin/users/${id}/suspend`, {
       method: "POST",

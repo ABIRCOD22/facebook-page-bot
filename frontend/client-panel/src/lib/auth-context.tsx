@@ -25,8 +25,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem("token")
+    const qs = new URLSearchParams(window.location.search)
+    const adminToken = qs.get("admin_token")
+    const token = adminToken || localStorage.getItem("token")
     if (token) {
+      if (adminToken) localStorage.setItem("token", adminToken)
       api.getMe()
         .then(setUser)
         .catch(() => localStorage.removeItem("token"))

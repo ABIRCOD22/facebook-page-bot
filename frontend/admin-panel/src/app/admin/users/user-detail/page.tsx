@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { Suspense, useEffect, useState } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   ArrowLeft, Ban, CheckCircle2, Trash2, KeyRound, Bot, Boxes, FileText, MessageSquare,
@@ -13,9 +13,17 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-export default function UserDetailPage() {
-  const params = useParams<{ id: string }>()
-  const id = params.id
+export default function UserDetailPageWrapper() {
+  return (
+    <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
+      <UserDetailPage />
+    </Suspense>
+  )
+}
+
+function UserDetailPage() {
+  const searchParams = useSearchParams()
+  const id = searchParams.get("id") || ""
   const router = useRouter()
   const [u, setU] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -78,8 +86,9 @@ export default function UserDetailPage() {
     setBusy("imp")
     try {
       const r = await adminApi.impersonate(id)
-      // ponytail: hand the client token to the user app on its own domain via localStorage.
-      window.open(`http://localhost:3000/?admin_token=${r.access_token}`, "_blank")
+      const clientUrl = process.env.NEXT_PUBLIC_CLIENT_PANEL_URL || "https://fb-autoreply-client.netlify.app"
+      // ponytail: client-panel auth-context ingests ?admin_token= on load; no localhost dependency.
+      window.open(`${clientUrl}/?admin_token=${r.access_token}`, "_blank")
     } catch (e) {
       alert(e instanceof Error ? e.message : "Impersonate failed")
     } finally {

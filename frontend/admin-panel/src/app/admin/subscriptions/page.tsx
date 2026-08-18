@@ -67,7 +67,7 @@ export default function SubscriptionsPage() {
                 {subs.map((s) => (
                   <tr key={s.user_id} className="border-t hover:bg-muted/30">
                     <td className="px-4 py-3">
-                      <Link href={`/admin/users/${s.user_id}`} className="font-medium hover:underline">{s.user_name || "—"}</Link>
+                      <Link href={`/admin/users/user-detail?id=${s.user_id}`} className="font-medium hover:underline">{s.user_name || "—"}</Link>
                       <p className="text-xs text-muted-foreground">{s.user_email}</p>
                     </td>
                     <td className="px-4 py-3"><Badge variant="secondary">{s.tier}</Badge></td>

@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { Suspense, useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft, Trash2 } from "lucide-react"
 import { adminApi } from "@/lib/api"
@@ -9,9 +9,17 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
-export default function ConversationDetailPage() {
-  const params = useParams<{ id: string }>()
-  const id = params.id
+export default function ConversationDetailWrapper() {
+  return (
+    <Suspense fallback={<p className="text-muted-foreground">Loading…</p>}>
+      <ConversationDetailPage />
+    </Suspense>
+  )
+}
+
+function ConversationDetailPage() {
+  const searchParams = useSearchParams()
+  const id = searchParams.get("id") || ""
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 

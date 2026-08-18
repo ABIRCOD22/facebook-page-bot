@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { Search, Ban, CheckCircle2, Trash2, Eye, Users, RefreshCw } from "lucide-react"
+import { Search, Ban, CheckCircle2, Trash2, Eye, Users, RefreshCw, UserPlus, X } from "lucide-react"
 import { adminApi } from "@/lib/api"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 const LIMIT = 20
 
@@ -18,6 +19,9 @@ export default function UsersPage() {
   const [offset, setOffset] = useState(0)
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
+  const [showAdd, setShowAdd] = useState(false)
+  const [newUser, setNewUser] = useState({ email: "", full_name: "", password: "", tier: "" })
+  const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -56,6 +60,30 @@ export default function UsersPage() {
 
   const pages = Math.ceil(total / LIMIT)
 
+  const createUser = async () => {
+    if (!newUser.email || !newUser.password) {
+      alert("Email and password are required")
+      return
+    }
+    setSaving(true)
+    try {
+      await adminApi.createUser({
+        email: newUser.email,
+        password: newUser.password,
+        full_name: newUser.full_name,
+        tier: newUser.tier || null,
+      })
+      setShowAdd(false)
+      setNewUser({ email: "", full_name: "", password: "", tier: "" })
+      setOffset(0)
+      await load()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Create failed")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -76,8 +104,42 @@ export default function UsersPage() {
             />
           </div>
           <Button variant="outline" size="icon" onClick={load} title="Refresh"><RefreshCw className="w-4 h-4" /></Button>
+          <Button size="sm" onClick={() => setShowAdd(!showAdd)}>
+            {showAdd ? <X className="w-4 h-4 mr-1" /> : <UserPlus className="w-4 h-4 mr-1" />}
+            {showAdd ? "Cancel" : "Add User"}
+          </Button>
         </div>
       </div>
+
+      {showAdd && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <Label className="text-xs">Email *</Label>
+                <Input type="email" placeholder="user@example.com" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
+              </div>
+              <div>
+                <Label className="text-xs">Full name</Label>
+                <Input placeholder="Jane Doe" value={newUser.full_name} onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })} />
+              </div>
+              <div>
+                <Label className="text-xs">Password *</Label>
+                <Input type="password" placeholder="••••••••" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
+              </div>
+              <div>
+                <Label className="text-xs">Tier</Label>
+                <Input placeholder="pro (blank = free trial)" value={newUser.tier} onChange={(e) => setNewUser({ ...newUser, tier: e.target.value })} />
+              </div>
+            </div>
+            <div className="flex justify-end mt-3">
+              <Button size="sm" disabled={saving} onClick={createUser}>
+                {saving ? "Creating…" : "Create user"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-0">
@@ -115,7 +177,7 @@ export default function UsersPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1">
                         <Button asChild variant="ghost" size="icon" title="View">
-                          <Link href={`/admin/users/${u.id}`}><Eye className="w-4 h-4" /></Link>
+                          <Link href={`/admin/users/user-detail?id=${u.id}`}><Eye className="w-4 h-4" /></Link>
                         </Button>
                         {u.is_active ? (
                           <Button variant="ghost" size="icon" title="Suspend" disabled={busy === u.id + "suspend"} onClick={() => act(u.id, "suspend")}>

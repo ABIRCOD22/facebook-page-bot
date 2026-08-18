@@ -14,6 +14,7 @@ backend/run_local.bat
 # Next.js build artifacts
 .next/
 *.tsbuildinfo
+out/
 
 # Local Netlify folder
 .netlify
