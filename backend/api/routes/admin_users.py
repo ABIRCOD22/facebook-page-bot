@@ -9,10 +9,14 @@ from sqlalchemy.orm import selectinload
 from api.dependencies import require_admin
 from database.connection import get_db
 from models.database_models import (
+    Alert,
+    AuditLog,
     Conversation,
     FacebookPage,
     KnowledgeBase,
+    KbTemplate,
     Message,
+    Payment,
     Product,
     Subscription,
     User,
@@ -234,10 +238,14 @@ async def delete_user(user_id: str, admin: User = Depends(require_admin), db=Dep
                 await db.delete(m)
             await db.delete(c)
         await db.delete(p)
-    for model in (Product, KnowledgeBase, Subscription):
+    for model in (Product, KnowledgeBase, Subscription, Payment, KbTemplate):
         rows = (await db.execute(select(model).where(model.user_id == user_id))).scalars().all()
         for r in rows:
             await db.delete(r)
+    for row in (await db.execute(select(Alert).where(Alert.related_user_id == user_id))).scalars().all():
+        await db.delete(row)
+    for row in (await db.execute(select(AuditLog).where(AuditLog.admin_user_id == user_id))).scalars().all():
+        await db.delete(row)
     await db.delete(user)
     await db.commit()
     await log_admin_action(admin.id, "user_delete", f"user={user_id}")
