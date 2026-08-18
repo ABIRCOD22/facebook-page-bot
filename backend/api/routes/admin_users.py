@@ -238,10 +238,12 @@ async def delete_user(user_id: str, admin: User = Depends(require_admin), db=Dep
                 await db.delete(m)
             await db.delete(c)
         await db.delete(p)
-    for model in (Product, KnowledgeBase, Subscription, Payment, KbTemplate):
+    for model in (Product, KnowledgeBase, Subscription, Payment):
         rows = (await db.execute(select(model).where(model.user_id == user_id))).scalars().all()
         for r in rows:
             await db.delete(r)
+    for row in (await db.execute(select(KbTemplate).where(KbTemplate.created_by == user_id))).scalars().all():
+        await db.delete(row)
     for row in (await db.execute(select(Alert).where(Alert.related_user_id == user_id))).scalars().all():
         await db.delete(row)
     for row in (await db.execute(select(AuditLog).where(AuditLog.admin_user_id == user_id))).scalars().all():
