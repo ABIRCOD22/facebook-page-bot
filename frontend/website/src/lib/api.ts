@@ -160,3 +160,75 @@ export async function checkBotConnection(creds: ClientCreds): Promise<BotStatus>
     return { ok: false, connected: false, message: "Could not reach the server. Please try again in a moment." }
   }
 }
+
+export interface ConnectResult {
+  ok: boolean
+  page_name?: string
+  verify_token?: string | null
+  message: string
+}
+
+/**
+ * Logs in with the funnel credentials and connects the user's Facebook page
+ * to their account server-side — no dashboard work needed. The client
+ * dashboard will already show the page connected when the user logs in.
+ */
+export async function connectFunnelPage(
+  creds: ClientCreds,
+  pageAccessToken: string,
+  fbAppId?: string,
+  fbAppSecret?: string,
+): Promise<ConnectResult> {
+  try {
+    const loginRes = await fetch(`${SITE.apiUrl}/api/client/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: creds.email, password: creds.password }),
+    })
+    if (!loginRes.ok) {
+      return {
+        ok: false,
+        message:
+          loginRes.status === 401
+            ? "Could not log in with these credentials. Please re-register from the start."
+            : `Login failed (${loginRes.status}). Please try again.`,
+      }
+    }
+    const login = await loginRes.json()
+    const res = await fetch(`${SITE.apiUrl}/api/client/pages/connect`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${login.access_token}`,
+      },
+      body: JSON.stringify({
+        page_access_token: pageAccessToken,
+        fb_app_id: fbAppId || undefined,
+        fb_app_secret: fbAppSecret || undefined,
+      }),
+    })
+    const text = await res.text()
+    let json: unknown = null
+    try {
+      json = text ? JSON.parse(text) : null
+    } catch {
+      json = null
+    }
+    if (!res.ok) {
+      const detail =
+        json && typeof json === "object" && "detail" in json
+          ? String((json as { detail: unknown }).detail)
+          : null
+      return { ok: false, message: detail || `Connection failed (${res.status}).` }
+    }
+    const d = json as { status: string; page_name: string; verify_token: string | null }
+    return {
+      ok: true,
+      page_name: d.page_name,
+      verify_token: d.verify_token ?? null,
+      message: `Page "${d.page_name}" is now connected to your account.`,
+    }
+  } catch {
+    return { ok: false, message: "Could not reach the server. Please try again in a moment." }
+  }
+}

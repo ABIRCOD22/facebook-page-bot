@@ -31,7 +31,7 @@ import {
 } from "lucide-react"
 import { Reveal } from "@/components/reveal"
 import { SITE } from "@/lib/site"
-import { loadCreds, checkBotConnection, clientPanelLoginUrl, type BotStatus } from "@/lib/api"
+import { loadCreds, checkBotConnection, connectFunnelPage, clientPanelLoginUrl, type BotStatus } from "@/lib/api"
 
 /* ------------------------------------------------------------------ */
 /* Step content                                                         */
@@ -87,12 +87,12 @@ const STEPS: StepDef[] = [
   },
   {
     icon: Link2,
-    title: "Connect your page in the dashboard",
-    intro: "Now we attach your page to your account. This happens inside your ChatriX dashboard.",
+    title: "Connect your page — automatically",
+    intro:
+      "Paste the token and app credentials below. We connect the page to your account for you — when you log in to your dashboard, everything is already there.",
     actions: [
-      { text: "Log in to your dashboard with the credentials from the last screen." },
-      { text: "Open “Page Connection”, choose Option A and paste your token, App ID and App Secret." },
-      { text: "Click “Connect Facebook Page” — you’ll see the green success message and your page in the list." },
+      { text: "Paste your Page Access Token, App ID and App Secret below." },
+      { text: "Click “Connect my page automatically” — we do the rest." },
     ],
     tip: "App ID and App Secret are required — without them the bot cannot receive messages.",
   },
@@ -101,7 +101,7 @@ const STEPS: StepDef[] = [
     title: "Switch on incoming messages",
     intro: "One webhook setting tells Facebook to forward every new message to your bot. About 3 minutes.",
     actions: [
-      { text: "Copy the green “verify token” that appeared right after you connected your page." },
+      { text: "Copy the green verify token that appeared right after your page connected." },
       {
         text: "In your app: Messenger → Webhooks, click “Edit”.",
         href: "https://developers.facebook.com/apps",
@@ -173,6 +173,15 @@ export default function SetupPage() {
   const [status, setStatus] = React.useState<BotStatus | null>(null)
   const creds = loadCreds()
 
+  const [token, setToken] = React.useState("")
+  const [appId, setAppId] = React.useState("")
+  const [appSecret, setAppSecret] = React.useState("")
+  const [connecting, setConnecting] = React.useState(false)
+  const [connectMsg, setConnectMsg] = React.useState<string | null>(null)
+  const [connectErr, setConnectErr] = React.useState<string | null>(null)
+  const [pageName, setPageName] = React.useState<string | null>(null)
+  const [verifyToken, setVerifyToken] = React.useState<string | null>(null)
+
   React.useEffect(() => {
     if (!creds) router.replace("/register")
   }, [creds, router])
@@ -180,7 +189,7 @@ export default function SetupPage() {
   if (!creds) return null
 
   const step = STEPS[stepIndex]
-  const done = (ticked[stepIndex] ?? []).filter(Boolean).length >= step.actions.length
+  const done = stepIndex === 2 ? !!pageName : (ticked[stepIndex] ?? []).filter(Boolean).length >= step.actions.length
 
   function toggle(i: number) {
     setTicked((prev) => {
@@ -197,6 +206,24 @@ export default function SetupPage() {
     setStatus(null)
     setStatus(await checkBotConnection(c))
     setChecking(false)
+  }
+
+  /** Step 3 — paste creds, we connect the page to their account server-side. */
+  async function connectPage() {
+    const c = loadCreds()
+    if (!c || !token.trim()) return
+    setConnecting(true)
+    setConnectMsg(null)
+    setConnectErr(null)
+    const res = await connectFunnelPage(c, token.trim(), appId.trim() || undefined, appSecret.trim() || undefined)
+    setConnecting(false)
+    if (res.ok) {
+      setPageName(res.page_name ?? null)
+      setVerifyToken(res.verify_token ?? null)
+      setConnectMsg(`Page “${res.page_name}” is connected to your account — you'll find it ready in your dashboard.`)
+    } else {
+      setConnectErr(res.message)
+    }
   }
 
   /* ------------------------------ visuals ------------------------------ */
@@ -234,15 +261,26 @@ export default function SetupPage() {
         )
       case 2:
         return (
-          <MockWindow title="ChatriX Dashboard · Page Connection" badge="Step 3">
-            <p className="field-label" style={{ marginBottom: "0.5rem" }}>Option A — We host the app</p>
+          <MockWindow title="ChatriX · Auto-connect" badge="Step 3">
+            <p className="field-label" style={{ marginBottom: "0.5rem" }}>We connect it for you</p>
             <div className="stack-xs" style={{ marginBottom: "0.7rem" }}>
               <MockRow label="Page Access Token *"><span className="tokenfield">EAABxxxxx…your-copied-token</span></MockRow>
               <MockRow label="App ID *"><span className="field-input" style={{ height: "2.2rem", display: "flex", alignItems: "center", fontSize: "0.85rem" }}>1234567890</span></MockRow>
               <MockRow label="App Secret *"><span className="field-input" style={{ height: "2.2rem", display: "flex", alignItems: "center", fontSize: "0.85rem" }}>••••••••••••••••</span></MockRow>
             </div>
-            <span className="btn btn-primary btn-sm"><Link2 className="h-4 w-4" /> Connect Facebook Page</span>
-            <p className="field-hint" style={{ marginTop: "0.7rem" }}>Green success = page connected + a verify token appears below.</p>
+            {pageName ? (
+              <div className="notice notice-success" style={{ marginTop: "0.3rem" }}>
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>Connected — page saved to your account.</span>
+              </div>
+            ) : (
+              <span className="btn btn-primary btn-sm"><Link2 className="h-4 w-4" /> Connect automatically</span>
+            )}
+            {verifyToken ? (
+              <p className="field-hint" style={{ marginTop: "0.6rem", color: "var(--success)", fontWeight: 700 }}>
+                ✓ verify token generated — copy it in step 4
+              </p>
+            ) : null}
           </MockWindow>
         )
       case 3:
@@ -251,7 +289,9 @@ export default function SetupPage() {
             <div className="stack-xs" style={{ marginBottom: "0.7rem" }}>
               <MockRow label="Callback URL"><span className="tokenfield">{CALLBACK_URL}</span></MockRow>
               <MockRow label="Verify token">
-                <span className="tokenfield" style={{ color: "var(--success)", fontWeight: 700 }}>paste-the-green-token-here</span>
+                <span className="tokenfield" style={{ color: "var(--success)", fontWeight: 700 }}>
+                  {verifyToken || "connect-first-in-step-3"}
+                </span>
               </MockRow>
             </div>
             <span className="btn btn-primary btn-sm"><ShieldCheck className="h-4 w-4" /> Save & Verify</span>
@@ -305,6 +345,78 @@ export default function SetupPage() {
   }
 
   /* ------------------------------ guidance ----------------------------- */
+
+  function renderConnectForm() {
+    return (
+      <div className="stack-md">
+        <div className="stack-xs">
+          <div className="field">
+            <span className="field-label">Page Access Token *</span>
+            <input
+              className="field-input"
+              type="password"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              placeholder="EAABxxxxx…"
+              style={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+            />
+          </div>
+          <div className="field">
+            <span className="field-label">App ID *</span>
+            <input className="field-input" value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="1234567890" />
+          </div>
+          <div className="field">
+            <span className="field-label">App Secret *</span>
+            <input
+              className="field-input"
+              type="password"
+              value={appSecret}
+              onChange={(e) => setAppSecret(e.target.value)}
+              placeholder="••••••••••••••••"
+            />
+          </div>
+        </div>
+
+        <button className="btn btn-primary btn-lg" disabled={connecting || !token.trim()} onClick={connectPage} style={{ alignSelf: "flex-start" }}>
+          {connecting ? (
+            <Loader2 className="h-4 w-4 shrink-0" style={{ animation: "spin 0.7s linear infinite" }} />
+          ) : (
+            <Link2 className="h-4 w-4 shrink-0" />
+          )}
+          {connecting ? "Connecting…" : pageName ? "Connected ✓" : "Connect my page automatically"}
+        </button>
+
+        {connectMsg ? (
+          <div className="notice notice-success">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>{connectMsg}</span>
+          </div>
+        ) : null}
+        {connectErr ? (
+          <div className="notice notice-error">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{connectErr}</span>
+          </div>
+        ) : null}
+
+        {verifyToken ? (
+          <div className="notice" style={{ fontSize: "0.85rem" }}>
+            <KeyRound className="h-4 w-4 shrink-0" />
+            <span>
+              <b>Webhook verify token generated</b> — copy it now, you'll paste it in step 4.
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => navigator.clipboard.writeText(verifyToken)}
+                style={{ marginTop: "0.4rem" }}
+              >
+                Copy verify token
+              </button>
+            </span>
+          </div>
+        ) : null}
+      </div>
+    )
+  }
 
   function renderActions() {
     return (
@@ -475,7 +587,7 @@ export default function SetupPage() {
 
             <p className="lead" style={{ fontSize: "0.95rem", marginBottom: "1rem" }}>{step.intro}</p>
 
-            {stepIndex < STEPS.length - 1 ? renderActions() : renderVerification()}
+            {stepIndex === 2 ? renderConnectForm() : stepIndex < STEPS.length - 1 ? renderActions() : renderVerification()}
 
             {stepIndex < STEPS.length - 1 && step.tip ? (
               <div className="notice" style={{ marginTop: "1rem", fontSize: "0.85rem" }}>
@@ -503,7 +615,9 @@ export default function SetupPage() {
             </div>
             {stepIndex < STEPS.length - 1 && !done ? (
               <p className="field-hint" style={{ marginTop: "0.5rem" }}>
-                Tick every box above to unlock “Next step” — or jump straight to the final check.
+                {stepIndex === 2
+                  ? "Connect your page above to unlock “Next step” — or jump straight to the final check."
+                  : "Tick every box above to unlock “Next step” — or jump straight to the final check."}
               </p>
             ) : null}
           </div>
