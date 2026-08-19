@@ -184,27 +184,66 @@ export default function PagesPage() {
       {pages.length === 0 && hasPage === true && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Next steps — follow in order</CardTitle>
-            <CardDescription>Non-technical walkthrough. Each step is a few clicks.</CardDescription>
+            <CardTitle className="text-lg">Next steps — connect your bot to our system</CardTitle>
+            <CardDescription>Follow these steps in order. Each one is a few clicks — no coding needed.</CardDescription>
           </CardHeader>
-          <CardContent>
-            <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-2">
-              <li>
-                Open <span className="font-mono text-xs">developers.facebook.com/tools/explorer</span> while logged in as the
-                admin of your page → click <b>Get Page Access Token</b> and choose your page.
-              </li>
-              <li>Copy the long token (starts with EAAB…), paste it in <b>Option A</b> below, and click Connect.</li>
-              <li>
-                Optionally add your Meta App ID (and App Secret) in Option A — then copy the green{" "}
-                <b>verify token</b> shown after connecting.
-              </li>
-              <li>
-                In the Meta App Dashboard → Messenger → Webhooks, click Edit → paste the verify token, and set the callback URL to{" "}
-                <span className="font-mono text-xs break-all select-all">https://facebook-page-bot-rdkt.onrender.com/api/webhook</span>.
-              </li>
-              <li>Message your page from a second Facebook account — the bot should reply within a few seconds.</li>
-              <li>Come back here and press <b>Scan business</b> to auto-profile your page.</li>
-            </ol>
+          <CardContent className="space-y-5 text-sm">
+            <div className="space-y-1.5">
+              <p className="font-semibold">Step 1 — Create your Meta app (one time, ~5 min)</p>
+              <ol className="list-decimal list-inside text-muted-foreground space-y-1">
+                <li>Open <a className="ulink" href="https://developers.facebook.com/apps" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a> in a new tab (logged in as your page&apos;s admin).</li>
+                <li>Click <b>Create app</b> → choose type <b>Business</b> → name it (e.g. &quot;My Bot App&quot;) → <b>Create</b>. Development mode is fine.</li>
+                <li>Go to <b>Settings → Basic</b> and keep this tab open — you need the <b>App ID</b> (a ~12-digit number) and <b>App Secret</b> (click <b>Show</b> → copy) in the next step.</li>
+              </ol>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="font-semibold">Step 2 — Grab your Page Access Token (~2 min)</p>
+              <ol className="list-decimal list-inside text-muted-foreground space-y-1">
+                <li>Open <a className="ulink" href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">developers.facebook.com/tools/explorer/</a> in the same browser.</li>
+                <li>If an app is selected in the top-right dropdown, switch it to the app you just created.</li>
+                <li>Click <b>Get Page Access Token</b> → tick your page → the big token field fills with a value starting with <code className="text-xs">EAAB…</code>.</li>
+                <li>Click the <b>copy icon</b> on that field.</li>
+                <li className="pt-1 text-xs">Note: this token may expire after a couple of hours — if the bot ever stops replying, just generate a fresh one here and reconnect below.</li>
+              </ol>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="font-semibold">Step 3 — Connect the page to our system (on this page, ~30 sec)</p>
+              <ol className="list-decimal list-inside text-muted-foreground space-y-1">
+                <li>In <b>Option A</b> below: paste the token into <b>Page Access Token</b>.</li>
+                <li>Paste the <b>App ID</b> and <b>App Secret</b> too — without them the bot cannot receive messages.</li>
+                <li>Click <b>Connect Facebook Page</b>.</li>
+                <li>Wait for the green message <b>&quot;Page connected — your bot is now live&quot;</b> and your page appearing in the <b>Connected pages</b> list further down.</li>
+              </ol>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="font-semibold">Step 4 — Switch on incoming messages (webhook, ~3 min)</p>
+              <ol className="list-decimal list-inside text-muted-foreground space-y-1">
+                <li>Copy the green <b>verify token</b> that appeared after connecting (use the Copy button).</li>
+                <li>In your app (<code className="text-xs">developers.facebook.com/apps</code> your app → <b>Messenger → Webhooks</b>) click <b>Edit</b> and paste:</li>
+                <li className="list-none pl-5 space-y-1">
+                  <p><b>Callback URL:</b> <code className="text-xs break-all select-all">https://facebook-page-bot-rdkt.onrender.com/api/webhook</code></p>
+                  <p><b>Verify token:</b> the green token you copied</p>
+                </li>
+                <li>Click <b>Save</b> → you should see <b>&quot;Webhooks are active for: Page&quot;</b>.</li>
+              </ol>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="font-semibold">Step 5 — Test the bot</p>
+              <ol className="list-decimal list-inside text-muted-foreground space-y-1">
+                <li>Log into a <b>second Facebook account</b> (if your app is in Development mode, add that account as a <b>Tester</b> in App Dashboard → <b>App roles</b> first).</li>
+                <li>Send your page a message like &quot;Hi, how much does your service cost?&quot;.</li>
+                <li>Your page should reply within a few seconds.</li>
+              </ol>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="font-semibold">Step 6 — Feed the bot your business info (optional but recommended)</p>
+              <p className="text-muted-foreground">In the <b>Connected pages</b> list, click <b>Scan business</b> — the bot studies your page&apos;s posts and learns your products, tone and prices automatically.</p>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -230,11 +269,11 @@ export default function PagesPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="aid">App ID (optional)</Label>
+              <Label htmlFor="aid">App ID * (needed for the bot to receive messages)</Label>
               <Input id="aid" placeholder="1234567890" value={appId} onChange={(e) => setAppId(e.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="sec">App Secret (optional)</Label>
+              <Label htmlFor="sec">App Secret * (needed for the bot to receive messages)</Label>
               <Input
                 id="sec"
                 type="password"
