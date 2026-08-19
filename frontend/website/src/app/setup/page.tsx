@@ -321,24 +321,44 @@ export default function SetupPage() {
           <MockWindow title="ChatriX · Bot status check" badge="Final step">
             <div className="chatui">
               <div className="crow in">
-                <div className="bub in">Is my bot live? 🤖</div>
+                <div className="bub in">Is my bot alive? 🤖</div>
               </div>
               <div className="crow out">
-                <div className="bub out">Checking your account with our server…</div>
+                <div className="bub out">Checking webhook + replies with our server…</div>
               </div>
             </div>
-            {status?.connected ? (
-              <div className="notice notice-success" style={{ marginTop: "0.8rem" }}>
+            <div className="stack-xs" style={{ marginTop: "0.8rem" }}>
+              <div className="notice notice-success" style={{ padding: "0.45rem 0.7rem" }}>
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span>Connected — your bot answers on <b>{status.page_name}</b>.</span>
+                <span className="text-sm">Page connected to your account</span>
               </div>
-            ) : null}
-            {status && !status.connected ? (
-              <div className="notice notice-error" style={{ marginTop: "0.8rem" }}>
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                <span>Not connected yet — check the list on the right.</span>
-              </div>
-            ) : null}
+              {status?.connected ? (
+                status.webhook_verified ? (
+                  <div className="notice notice-success" style={{ padding: "0.45rem 0.7rem" }}>
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    <span className="text-sm">Webhook verified by Meta</span>
+                  </div>
+                ) : (
+                  <div className="notice" style={{ padding: "0.45rem 0.7rem" }}>
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span className="text-sm">Webhook not verified yet — do step 4</span>
+                  </div>
+                )
+              ) : null}
+              {status?.connected ? (
+                status.last_bot_reply_at ? (
+                  <div className="notice notice-success" style={{ padding: "0.45rem 0.7rem" }}>
+                    <CheckCircle2 className="h-4 w-4 shrink-0" />
+                    <span className="text-sm">Bot replied to a real message</span>
+                  </div>
+                ) : (
+                  <div className="notice" style={{ padding: "0.45rem 0.7rem" }}>
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span className="text-sm">Waiting for the first message</span>
+                  </div>
+                )
+              ) : null}
+            </div>
           </MockWindow>
         )
     }
@@ -454,13 +474,13 @@ export default function SetupPage() {
     return (
       <div className="stack-md">
         <p className="lead" style={{ fontSize: "0.95rem" }}>
-          Done everything? We log into your account with your funnel credentials and ask the server whether a page is
-          connected to the bot.
+          Done everything? We log into your account with your funnel credentials and ask the server whether your bot is
+          actually alive on the page — webhook verified by Meta, and the bot has replied.
         </p>
 
         {!status && !checking ? (
           <button className="btn btn-primary btn-lg" onClick={verify} style={{ alignSelf: "flex-start" }}>
-            <RefreshCw className="h-4 w-4" /> Check my bot status
+            <RefreshCw className="h-4 w-4" /> Check if my bot is alive
           </button>
         ) : null}
 
@@ -481,6 +501,20 @@ export default function SetupPage() {
               <span className="text-sm">
                 Page: <b>{status.page_name}</b> · Bot: <b>{status.bot_name}</b>
               </span>
+              <ul className="checklist" style={{ listStyle: "none", marginTop: "0.2rem" }}>
+                <li>
+                  <CheckCircle2 className="ico" />
+                  <span>Page connected to your account</span>
+                </li>
+                <li>
+                  {status.webhook_verified ? <CheckCircle2 className="ico" /> : <AlertCircle className="ico" style={{ color: "var(--warning, #D97706)" }} />}
+                  <span>{status.webhook_verified ? "Webhook verified by Meta — messages reach your bot" : "Webhook not verified yet — complete step 4 (paste callback URL + verify token in Meta)"}</span>
+                </li>
+                <li>
+                  {status.last_bot_reply_at ? <CheckCircle2 className="ico" /> : <AlertCircle className="ico" style={{ color: "var(--warning, #D97706)" }} />}
+                  <span>{status.last_bot_reply_at ? "The bot already replied to a real message" : "No customer message yet — send one from a second account to see the bot answer"}</span>
+                </li>
+              </ul>
               <span>
                 <a className="btn btn-primary btn-sm" href={clientPanelLoginUrl()} target="_blank" rel="noopener noreferrer">
                   Open my dashboard <ExternalLink className="h-3.5 w-3.5" />

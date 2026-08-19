@@ -16,7 +16,7 @@ from sqlalchemy import select
 from api.dependencies import get_current_user
 from config import get_settings
 from database.connection import get_db
-from models.database_models import FacebookPage, Subscription, User
+from models.database_models import Conversation, FacebookPage, Message, Subscription, User
 from services.business_scanner import scan_page
 from services.page_connector import (
     configure_app_webhook,
@@ -230,8 +230,20 @@ async def list_pages(user: User = Depends(get_current_user), db=Depends(get_db))
             )
         )
     ).scalars().all()
-    return {
-        "pages": [
+
+    pages = []
+    for p in rows:
+        # Liveness signal: has the bot ever replied on this page?
+        last_bot_reply = (
+            await db.execute(
+                select(Message.timestamp)
+                .join(Conversation, Conversation.id == Message.conversation_id)
+                .where(Conversation.page_id == p.id, Message.sender_type == "bot")
+                .order_by(Message.timestamp.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        pages.append(
             {
                 "id": p.id,
                 "page_id": p.page_id,
@@ -239,13 +251,14 @@ async def list_pages(user: User = Depends(get_current_user), db=Depends(get_db))
                 "bot_name": p.bot_name,
                 "is_active": p.is_active,
                 "connected_at": p.connected_at,
+                "webhook_verified_at": p.webhook_verified_at,
+                "last_bot_reply_at": last_bot_reply,
                 "scan_status": p.scan_status or "not_scanned",
                 "scanned_at": p.scanned_at,
                 "business_profile": json.loads(p.business_profile) if p.business_profile else None,
             }
-            for p in rows
-        ]
-    }
+        )
+    return {"pages": pages}
 
 
 @router.delete("/{page_db_id}")

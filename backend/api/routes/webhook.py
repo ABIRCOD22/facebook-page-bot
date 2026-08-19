@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from sqlalchemy import select, update
@@ -44,6 +45,12 @@ async def verify_webhook(
                 )
             ).scalar_one_or_none()
             if page:
+                # Liveness signal: Meta successfully verified this page's
+                # webhook callback URL (the user finished the setup wizard
+                # step 4). Used by the final wizard check to prove the bot
+                # is actually receiving events.
+                page.webhook_verified_at = datetime.utcnow()
+                await session.commit()
                 logger.info("Webhook verified for tenant page %s", page.page_id)
                 return int(hub_challenge) if hub_challenge.isdigit() else hub_challenge
 

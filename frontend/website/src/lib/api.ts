@@ -112,12 +112,15 @@ export interface BotStatus {
   connected: boolean
   page_name?: string
   bot_name?: string
+  webhook_verified?: boolean
+  last_bot_reply_at?: string | null
   message: string
 }
 
 /**
  * Logs in with the funnel credentials and asks the backend whether a
- * Facebook page is connected for this account.
+ * Facebook page is connected for this account — and whether the bot is
+ * actually alive on it (webhook verified by Meta + bot has replied).
  */
 export async function checkBotConnection(creds: ClientCreds): Promise<BotStatus> {
   try {
@@ -141,20 +144,34 @@ export async function checkBotConnection(creds: ClientCreds): Promise<BotStatus>
       headers: { Authorization: `Bearer ${login.access_token}` },
     })
     if (!pagesRes.ok) return { ok: true, connected: false, message: "Could not check your pages. Please try again." }
-    const pages = (await pagesRes.json()).pages as { page_name: string; bot_name: string }[]
+    const pages = (await pagesRes.json()).pages as {
+      page_name: string
+      bot_name: string
+      webhook_verified_at?: string | null
+      last_bot_reply_at?: string | null
+    }[]
     if (pages && pages.length > 0) {
+      const page = pages[0]
+      const webhookVerified = !!page.webhook_verified_at
+      const hasReplied = !!page.last_bot_reply_at
       return {
         ok: true,
         connected: true,
-        page_name: pages[0].page_name,
-        bot_name: pages[0].bot_name,
-        message: `Your bot is connected to "${pages[0].page_name}" and running.`,
+        page_name: page.page_name,
+        bot_name: page.bot_name,
+        webhook_verified: webhookVerified,
+        last_bot_reply_at: page.last_bot_reply_at ?? null,
+        message: webhookVerified && hasReplied
+          ? `Your bot is alive — it answered messages on "${page.page_name}".`
+          : webhookVerified
+            ? `Webhook is live on "${page.page_name}" — the bot will answer the next message you send it.`
+            : `"${page.page_name}" is connected but the webhook isn't active yet — finish step 4 (paste callback URL + verify token in Meta).`,
       }
     }
     return {
       ok: true,
       connected: false,
-      message: "No page is connected yet for this account. Go to your dashboard and connect your Facebook page.",
+      message: "No page is connected yet for this account. Go back to step 3 and connect your Facebook page.",
     }
   } catch {
     return { ok: false, connected: false, message: "Could not reach the server. Please try again in a moment." }

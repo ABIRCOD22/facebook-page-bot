@@ -97,6 +97,7 @@ class FacebookPage(Base):
 
     # Phase 3: per-tenant webhook verify token + business scan results
     verify_token = Column(String(64), nullable=True)  # hub.verify_token for the page's own app webhook
+    webhook_verified_at = Column(DateTime, nullable=True)  # set when Meta successfully verifies the callback URL
     business_profile = Column(Text, nullable=True)  # JSON summary from the business scanner
     scan_status = Column(String(20), default="not_scanned")  # not_scanned, pending, done, error
     scanned_at = Column(DateTime, nullable=True)

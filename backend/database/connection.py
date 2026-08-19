@@ -141,6 +141,7 @@ async def _ensure_columns():
         "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS typing_indicator_enabled BOOLEAN DEFAULT TRUE",
         "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS fetch_customer_name BOOLEAN DEFAULT TRUE",
         "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS verify_token VARCHAR(64)",
+        "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS webhook_verified_at TIMESTAMP WITHOUT TIME ZONE",
         "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS business_profile TEXT",
         "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS scan_status VARCHAR(20) DEFAULT 'not_scanned'",
         "ALTER TABLE facebook_pages ADD COLUMN IF NOT EXISTS scanned_at TIMESTAMP WITHOUT TIME ZONE",
