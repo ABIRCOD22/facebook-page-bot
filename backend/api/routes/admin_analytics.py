@@ -1,13 +1,14 @@
 """Platform analytics aggregates for charts."""
 
+import asyncio
 from collections import defaultdict
 from datetime import datetime, timedelta
 from sqlalchemy import select, text
 from fastapi import APIRouter, Depends
 
 from api.dependencies import require_admin
-from database.connection import get_db
-from models.database_models import Conversation, Message, Subscription, User
+from database.connection import AsyncSessionFactory
+from models.database_models import Message, Subscription, User
 
 router = APIRouter(prefix="/api/admin/analytics", tags=["admin-analytics"])
 
@@ -22,31 +23,58 @@ _TOTALS_SQL = text(
 )
 
 
+async def _with_new_session(fn):
+    async with AsyncSessionFactory() as s:
+        return await fn(s)
+
+
+async def _read_msgs(s, since):
+    return (
+        await s.execute(select(Message.timestamp).where(Message.timestamp >= since))
+    ).scalars().all()
+
+
+async def _read_users(s, since):
+    return (
+        await s.execute(select(User.created_at).where(User.created_at >= since))
+    ).scalars().all()
+
+
+async def _read_subs(s):
+    return (await s.execute(select(Subscription))).scalars().all()
+
+
+async def _read_totals(s):
+    return (await s.execute(_TOTALS_SQL)).mappings().one()
+
+
 @router.get("")
-async def analytics(admin=Depends(require_admin), db=Depends(get_db)):
+async def analytics(admin=Depends(require_admin)):
     now = datetime.utcnow()
     since = now - timedelta(days=14)
 
+    # All reads are independent — one concurrent wave of remote-DB round trips.
+    reads = await asyncio.gather(
+        _with_new_session(lambda s: _read_msgs(s, since)),
+        _with_new_session(lambda s: _read_users(s, since)),
+        _with_new_session(_read_subs),
+        _with_new_session(_read_totals),
+    )
+    msgs, users, subs, totals = reads
+
     # Messages per day (last 14 days)
-    msgs = (
-        await db.execute(select(Message.timestamp).where(Message.timestamp >= since))
-    ).scalars().all()
     per_day = defaultdict(int)
     for ts in msgs:
         per_day[ts.date().isoformat()] += 1
     messages_trend = [{"date": (since + timedelta(days=i)).date().isoformat(), "count": per_day[(since + timedelta(days=i)).date().isoformat()]} for i in range(15)]
 
     # New users per day
-    users = (
-        await db.execute(select(User.created_at).where(User.created_at >= since))
-    ).scalars().all()
     u_per_day = defaultdict(int)
     for ts in users:
         u_per_day[ts.date().isoformat()] += 1
     users_trend = [{"date": (since + timedelta(days=i)).date().isoformat(), "count": u_per_day[(since + timedelta(days=i)).date().isoformat()]} for i in range(15)]
 
     # Revenue by tier (active subs)
-    subs = (await db.execute(select(Subscription))).scalars().all()
     by_tier = defaultdict(lambda: {"count": 0, "mrr": 0})
     for s in subs:
         by_tier[s.tier]["count"] += 1
@@ -59,16 +87,13 @@ async def analytics(admin=Depends(require_admin), db=Depends(get_db)):
     top_user_ids = [s.user_id for s in top]
     emails = {}
     if top_user_ids:
-        found = (
-            await db.execute(select(User.id, User.email).where(User.id.in_(top_user_ids)))
-        ).all()
+        async with AsyncSessionFactory() as s:
+            found = (await s.execute(select(User.id, User.email).where(User.id.in_(top_user_ids)))).all()
         emails = {uid: email for uid, email in found}
     top_users = [
         {"user_id": s.user_id, "email": emails.get(s.user_id, "?"), "messages_used": s.messages_used or 0}
         for s in top
     ]
-
-    totals = (await db.execute(_TOTALS_SQL)).mappings().one()
 
     return {
         "messages_trend": messages_trend,
