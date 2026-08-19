@@ -2,101 +2,173 @@
 
 /**
  * setup/page.tsx — step 3 of the onboarding funnel: a visual, step-by-step
- * bot setup wizard. One screen per step with graphical mock previews, and a
- * final step that verifies against the backend whether the bot is connected.
+ * bot setup wizard. One screen per step, an on-brand product mockup on the
+ * left and a task checklist on the right. Next unlocks once every action of
+ * the step is ticked. The final step verifies against the backend whether
+ * the bot is connected and shows an exact error if it is not.
+ *
+ * Styling is 100% the marketing site design system (globals.css): .mock
+ * window chrome, .tokenfield, .chatui/.bub, .checklist, .notice, .btn.
  */
 import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
   AlertCircle,
+  AppWindow,
   ArrowLeft,
   ArrowRight,
   CheckCircle2,
   ExternalLink,
   KeyRound,
+  Link2,
   Loader2,
   MessageCircle,
   MessagesSquare,
   RefreshCw,
+  Settings2,
   ShieldCheck,
   Sparkles,
-  Link2,
 } from "lucide-react"
-import { Button, LoadingButton, LinkButton } from "@/components/ui/button"
 import { Reveal } from "@/components/reveal"
 import { SITE } from "@/lib/site"
-import { loadCreds, clearCreds, checkBotConnection, clientPanelLoginUrl, type BotStatus } from "@/lib/api"
+import { loadCreds, checkBotConnection, clientPanelLoginUrl, type BotStatus } from "@/lib/api"
 
-type Step = "ask" | "creating" | "wizard"
+/* ------------------------------------------------------------------ */
+/* Step content                                                         */
+/* ------------------------------------------------------------------ */
+
+const CALLBACK_URL = "https://facebook-page-bot-rdkt.onrender.com/api/webhook"
+
+interface Action {
+  text: string
+  href?: string
+  external?: boolean
+}
+
+interface StepDef {
+  icon: typeof KeyRound
+  title: string
+  intro: string
+  actions: Action[]
+  tip: string
+}
+
+const STEPS: StepDef[] = [
+  {
+    icon: AppWindow,
+    title: "Create your Meta app",
+    intro:
+      "This app is the technical bridge between your Facebook page and our system. You only do this once — about 5 minutes.",
+    actions: [
+      {
+        text: "Open Meta for Developers and click “Create app”.",
+        href: "https://developers.facebook.com/apps",
+        external: true,
+      },
+      { text: "Choose app type “Business”, give it a name (e.g. “My Bot App”) and click “Create”. Development mode is fine." },
+      { text: "Open “Settings → Basic” and copy the App ID and App Secret — you need them in step 3." },
+    ],
+    tip: "A Meta app needs a Facebook account. Log in as the account that manages your page.",
+  },
+  {
+    icon: KeyRound,
+    title: "Get your Page Access Token",
+    intro: "This token lets your bot read and answer messages as your page. Keep the tab open — you’ll paste it in your dashboard.",
+    actions: [
+      {
+        text: "Open the Graph API Explorer (logged in as your page’s admin).",
+        href: "https://developers.facebook.com/tools/explorer/",
+        external: true,
+      },
+      { text: "In the top-right dropdown, switch to the app you just created." },
+      { text: "Click “Get Page Access Token”, tick your page, then copy the token (it starts with EAAB…)." },
+    ],
+    tip: "The token expires after a couple of hours. If your bot ever stops replying, generate a fresh token here and reconnect.",
+  },
+  {
+    icon: Link2,
+    title: "Connect your page in the dashboard",
+    intro: "Now we attach your page to your account. This happens inside your ChatriX dashboard.",
+    actions: [
+      { text: "Log in to your dashboard with the credentials from the last screen." },
+      { text: "Open “Page Connection”, choose Option A and paste your token, App ID and App Secret." },
+      { text: "Click “Connect Facebook Page” — you’ll see the green success message and your page in the list." },
+    ],
+    tip: "App ID and App Secret are required — without them the bot cannot receive messages.",
+  },
+  {
+    icon: Settings2,
+    title: "Switch on incoming messages",
+    intro: "One webhook setting tells Facebook to forward every new message to your bot. About 3 minutes.",
+    actions: [
+      { text: "Copy the green “verify token” that appeared right after you connected your page." },
+      {
+        text: "In your app: Messenger → Webhooks, click “Edit”.",
+        href: "https://developers.facebook.com/apps",
+        external: true,
+      },
+      { text: "Paste the callback URL and the verify token, then click “Save”. You should see “Webhooks are active for: Page”." },
+    ],
+    tip: "Callback URL must be exactly: " + CALLBACK_URL,
+  },
+  {
+    icon: MessageCircle,
+    title: "Test your bot",
+    intro: "See it live. Your bot answers on your page’s behalf in a few seconds.",
+    actions: [
+      { text: "Open Messenger on a second Facebook account and send your page a message (e.g. “hi, what are your prices?”)." },
+      { text: "Your page replies automatically — as your page, in a few seconds." },
+    ],
+    tip: "Development-mode apps only deliver to testers: add your second account under “App roles → Testers” first.",
+  },
+]
+
+/* ------------------------------------------------------------------ */
+/* Small on-brand preview pieces (all classes from globals.css)         */
+/* ------------------------------------------------------------------ */
+
+function MockWindow({ title, badge, children }: { title: string; badge?: string; children: React.ReactNode }) {
+  return (
+    <div className="mock">
+      <div className="mock-bar">
+        <span className="mock-dot r" />
+        <span className="mock-dot y" />
+        <span className="mock-dot g" />
+        <span className="mock-title">{title}</span>
+        {badge ? <span className="mock-pill p" style={{ marginLeft: "auto" }}>{badge}</span> : null}
+      </div>
+      <div className="mock-body">{children}</div>
+    </div>
+  )
+}
+
+function MockRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="field">
+      <span className="field-label" style={{ fontSize: "0.8rem" }}>{label}</span>
+      {children}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Page                                                                */
+/* ------------------------------------------------------------------ */
+
+type Phase = "ask" | "creating" | "wizard"
 
 const CREATE_STEPS = [
-  "Go to facebook.com/pages/create and log in to the Facebook account that will manage the page.",
+  "Open facebook.com/pages/create while logged in as the account that will manage the page.",
   "Choose a category that matches your business (e.g. Restaurant, Clinic, Online Store).",
-  "Add your business name, profile photo and cover photo — the bot answers using your page's identity.",
-  "Publish the page. You do not need to post anything yet.",
+  "Add your business name, photo and cover — your bot answers using this identity.",
+  "Publish the page. No posts needed yet — the bot fills the conversation.",
 ]
-
-const STEP_TITLES = [
-  "Create your Meta app",
-  "Get your Page Access Token",
-  "Connect your page in the dashboard",
-  "Switch on incoming messages (webhooks)",
-  "Test your bot",
-  "Verify your connection",
-]
-
-const WEBHOOK_CALLBACK = "https://facebook-page-bot-rdkt.onrender.com/api/webhook"
-
-/** Fake browser window used to illustrate each step graphically. */
-function BrowserMock({ url, children }: { url: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-line bg-white shadow-lg overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-line bg-muted px-4 py-2.5">
-        <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F57]" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#FEBC2E]" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#28C840]" />
-        <span className="ml-3 flex-1 truncate rounded-md bg-white border border-line px-3 py-1 text-[11px] text-mut select-all">
-          {url}
-        </span>
-      </div>
-      <div className="p-4 space-y-3">{children}</div>
-    </div>
-  )
-}
-
-function MiniButton({ children, primary = false }: { children: React.ReactNode; primary?: boolean }) {
-  return (
-    <span
-      className={
-        "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium " +
-        (primary ? "bg-[#1877F2] text-white" : "border border-line bg-white text-ink")
-      }
-    >
-      {children}
-    </span>
-  )
-}
-
-function MiniField({ label, value, green = false }: { label: string; value: string; green?: boolean }) {
-  return (
-    <div className="space-y-1">
-      <p className="text-[11px] text-mut">{label}</p>
-      <p
-        className={
-          "text-xs break-all rounded-lg border px-3 py-2 font-mono " +
-          (green ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-line bg-muted text-ink")
-        }
-      >
-        {value}
-      </p>
-    </div>
-  )
-}
 
 export default function SetupPage() {
   const router = useRouter()
-  const [step, setStep] = React.useState<Step>("ask")
-  const [wizardStep, setWizardStep] = React.useState(0)
+  const [phase, setPhase] = React.useState<Phase>("ask")
+  const [stepIndex, setStepIndex] = React.useState(0)
+  const [ticked, setTicked] = React.useState<Record<number, boolean[]>>({})
   const [checking, setChecking] = React.useState(false)
   const [status, setStatus] = React.useState<BotStatus | null>(null)
   const creds = loadCreds()
@@ -107,6 +179,17 @@ export default function SetupPage() {
 
   if (!creds) return null
 
+  const step = STEPS[stepIndex]
+  const done = (ticked[stepIndex] ?? []).filter(Boolean).length >= step.actions.length
+
+  function toggle(i: number) {
+    setTicked((prev) => {
+      const next = [...(prev[stepIndex] ?? [])]
+      next[i] = !next[i]
+      return { ...prev, [stepIndex]: next }
+    })
+  }
+
   async function verify() {
     const c = loadCreds()
     if (!c) return
@@ -116,264 +199,313 @@ export default function SetupPage() {
     setChecking(false)
   }
 
-  function renderWizardStep() {
-    switch (wizardStep) {
+  /* ------------------------------ visuals ------------------------------ */
+
+  function renderVisual() {
+    switch (stepIndex) {
       case 0:
         return (
-          <BrowserMock url="https://developers.facebook.com/apps">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium m-0">My Apps</p>
-              <MiniButton primary>＋ Create app</MiniButton>
+          <MockWindow title="Meta Developer · My Apps" badge="Step 1">
+            <div className="between" style={{ marginBottom: "0.7rem" }}>
+              <span className="field-label">My Apps</span>
+              <span className="btn btn-primary btn-sm"><Sparkles className="h-4 w-4" /> Create app</span>
             </div>
-            <div className="rounded-xl border border-dashed border-line p-4 text-center text-xs text-mut">
-              Your new app appears here after creation
+            <div className="dropzone" style={{ opacity: 0.85 }}>
+              <AppWindow className="h-5 w-5" />
+              <span className="field-hint">Your new app appears here</span>
             </div>
-            <div className="rounded-xl bg-[#1877F2]/5 border border-[#1877F2]/20 p-3 text-xs text-soft">
-              Choose app type <b>Business</b> → name it (e.g. &quot;My Bot App&quot;) → <b>Create</b>. Development
-              mode is fine.
-            </div>
-            <div className="flex items-center gap-2 text-xs text-soft">
-              <KeyRound className="h-4 w-4 shrink-0 text-[#1877F2]" />
-              Later you need <b>Settings → Basic</b> for the App ID &amp; App Secret.
-            </div>
-          </BrowserMock>
+            <p className="field-hint" style={{ marginTop: "0.7rem" }}>
+              App type <b>Business</b> → name it → <b>Create</b>.
+            </p>
+          </MockWindow>
         )
       case 1:
         return (
-          <BrowserMock url="https://developers.facebook.com/tools/explorer/">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium m-0">Graph API Explorer</p>
-              <MiniButton primary>Get Page Access Token</MiniButton>
+          <MockWindow title="Graph API Explorer" badge="Step 2">
+            <div className="between" style={{ marginBottom: "0.7rem" }}>
+              <span className="field-label">Your app · Your page</span>
+              <span className="btn btn-primary btn-sm"><KeyRound className="h-4 w-4" /> Get Page Access Token</span>
             </div>
-            <div className="space-y-1">
-              <p className="text-[11px] text-mut">Your page token (starts with EAAB…)</p>
-              <p className="text-xs font-mono break-all rounded-lg border border-line bg-muted px-3 py-2 select-all">
-                EAABxxxxx…SGVsbG8tQ2hhdHJpWC1ib3QtNzI0NTY=
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-soft">
-              <MessageCircle className="h-4 w-4 shrink-0 text-[#1877F2]" />
-              Pick the app you created (top-right) so the token belongs to it, then choose your page.
-            </div>
-            <p className="text-[11px] text-mut m-0">
-              Note: the token may expire after a couple of hours — if the bot ever stops replying, generate a fresh
-              one and reconnect.
+            <div className="tokenfield">EAABxxxxx…CopyMe-SGV sbG8tQ2hhdHJpWC1ib3QtNzI0NTY=</div>
+            <p className="field-hint" style={{ marginTop: "0.7rem" }}>
+              Copy the whole token — it starts with <b>EAAB</b>.
             </p>
-          </BrowserMock>
+          </MockWindow>
         )
       case 2:
         return (
-          <BrowserMock url="https://fb-autoreply-client.netlify.app/dashboard/pages">
-            <p className="text-sm font-medium m-0">Option A — We host the app</p>
-            <MiniField label="Page Access Token *" value="EAABxxxxx…SGVsbG8tQ2hhdHJpWC1ib3QtNzI0NTY=" />
-            <MiniField label="App ID *" value="1234567890" />
-            <MiniField label="App Secret *" value="••••••••••••••••" />
-            <div>
-              <MiniButton primary>
-                <Link2 className="h-3 w-3" /> Connect Facebook Page
-              </MiniButton>
+          <MockWindow title="ChatriX Dashboard · Page Connection" badge="Step 3">
+            <p className="field-label" style={{ marginBottom: "0.5rem" }}>Option A — We host the app</p>
+            <div className="stack-xs" style={{ marginBottom: "0.7rem" }}>
+              <MockRow label="Page Access Token *"><span className="tokenfield">EAABxxxxx…your-copied-token</span></MockRow>
+              <MockRow label="App ID *"><span className="field-input" style={{ height: "2.2rem", display: "flex", alignItems: "center", fontSize: "0.85rem" }}>1234567890</span></MockRow>
+              <MockRow label="App Secret *"><span className="field-input" style={{ height: "2.2rem", display: "flex", alignItems: "center", fontSize: "0.85rem" }}>••••••••••••••••</span></MockRow>
             </div>
-            <p className="text-[11px] text-mut m-0">
-              Do this inside your dashboard — log in below, open <b>Page Connection</b> and follow the on-screen guide.
-            </p>
-          </BrowserMock>
+            <span className="btn btn-primary btn-sm"><Link2 className="h-4 w-4" /> Connect Facebook Page</span>
+            <p className="field-hint" style={{ marginTop: "0.7rem" }}>Green success = page connected + a verify token appears below.</p>
+          </MockWindow>
         )
       case 3:
         return (
-          <BrowserMock url="https://developers.facebook.com/apps → Messenger → Webhooks">
-            <p className="text-sm font-medium m-0">Webhooks — Edit</p>
-            <MiniField label="Callback URL" value={WEBHOOK_CALLBACK} />
-            <MiniField label="Verify token" value="paste-the-green-token-from-your-dashboard" green />
-            <div>
-              <MiniButton primary>Save &amp; Verify</MiniButton>
+          <MockWindow title="Your Meta App · Messenger → Webhooks" badge="Step 4">
+            <div className="stack-xs" style={{ marginBottom: "0.7rem" }}>
+              <MockRow label="Callback URL"><span className="tokenfield">{CALLBACK_URL}</span></MockRow>
+              <MockRow label="Verify token">
+                <span className="tokenfield" style={{ color: "var(--success)", fontWeight: 700 }}>paste-the-green-token-here</span>
+              </MockRow>
             </div>
-            <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              You should see: &quot;Webhooks are active for: Page&quot;
-            </div>
-            <p className="text-[11px] text-mut m-0">
-              The green verify token is shown right after you connect your page in the dashboard.
+            <span className="btn btn-primary btn-sm"><ShieldCheck className="h-4 w-4" /> Save & Verify</span>
+            <p className="field-hint" style={{ marginTop: "0.7rem", color: "var(--success)" }}>
+              ✓ “Webhooks are active for: Page”
             </p>
-          </BrowserMock>
+          </MockWindow>
         )
       case 4:
         return (
-          <div className="rounded-2xl border border-line bg-white shadow-lg overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-line bg-muted px-4 py-2.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F57]" />
-              <span className="h-2.5 w-2.5 rounded-full bg-[#FEBC2E]" />
-              <span className="h-2.5 w-2.5 rounded-full bg-[#28C840]" />
-              <span className="ml-3 flex-1 truncate rounded-md bg-white border border-line px-3 py-1 text-[11px] text-mut">
-                Messenger — your page
-              </span>
+          <MockWindow title="Messenger · your page" badge="Step 5">
+            <div className="chatui">
+              <div className="crow in">
+                <div className="bub in">Hi! How much does your plan cost? 🙂</div>
+              </div>
+              <div className="crow out">
+                <div className="bub out">Hey! Starter is $29/month — want me to walk you through it? 🤖</div>
+              </div>
             </div>
-            <div className="p-4 space-y-3">
-              <div className="flex justify-start">
-                <span className="max-w-[75%] rounded-2xl rounded-bl-sm bg-muted px-3 py-2 text-xs">
-                  Hi, how much does your service cost? 🙂
-                </span>
-              </div>
-              <div className="flex justify-end">
-                <span className="max-w-[75%] rounded-2xl rounded-br-sm bg-[#1877F2] px-3 py-2 text-xs text-white">
-                  Hi! Our Starter plan is $29/month — want me to walk you through it? 🤖
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                Your page replies within a few seconds
-              </div>
-              <p className="text-[11px] text-mut m-0">
-                Use a second Facebook account (in Development mode, add it as a <b>Tester</b> in App roles first).
-              </p>
-            </div>
-          </div>
+            <p className="field-hint" style={{ marginTop: "0.7rem", color: "var(--success)" }}>
+              ✓ Bot replied on your page within seconds
+            </p>
+          </MockWindow>
         )
       default:
         return (
-          <div className="stack-md">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-[#1877F2]" />
-              <p className="text-sm m-0">
-                Done all the steps? Let&apos;s check whether your bot is live on Facebook.
-              </p>
-            </div>
-            {!status && !checking && (
-              <LoadingButton
-                size="lg"
-                variant="gradient"
-                onClick={verify}
-                rightIcon={<RefreshCw className="h-4 w-4" />}
-              >
-                Check my bot status
-              </LoadingButton>
-            )}
-            {checking && (
-              <div className="flex items-center gap-2 text-sm text-soft">
-                <Loader2 className="h-4 w-4 animate-spin" /> Checking your account on the server…
+          <MockWindow title="ChatriX · Bot status check" badge="Final step">
+            <div className="chatui">
+              <div className="crow in">
+                <div className="bub in">Is my bot live? 🤖</div>
               </div>
-            )}
-            {status &&
-              (status.connected ? (
-                <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-4 stack-sm">
-                  <div className="flex items-center gap-2 text-emerald-700 font-medium">
-                    <CheckCircle2 className="h-5 w-5" /> Bot connected — everything is live!
-                  </div>
-                  <p className="text-sm text-emerald-900 m-0">{status.message}</p>
-                  <p className="text-xs text-emerald-800 m-0">
-                    Page: <b>{status.page_name}</b> · Bot: <b>{status.bot_name}</b>
-                  </p>
-                  <LinkButton href={clientPanelLoginUrl()} variant="default" size="sm" rightIcon={<ExternalLink className="h-3.5 w-3.5" />}>
-                    Open my dashboard
-                  </LinkButton>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-red-300 bg-red-50 p-4 stack-sm">
-                  <div className="flex items-center gap-2 text-red-700 font-medium">
-                    <AlertCircle className="h-5 w-5" /> Bot is not connected yet
-                  </div>
-                  <p className="text-sm text-red-900 m-0">{status.message}</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button size="sm" variant="outline" onClick={() => setWizardStep(2)}>
-                      Go back to step 3
-                    </Button>
-                    <Button size="sm" onClick={() => window.location.href = clientPanelLoginUrl()}>
-                      Open my dashboard & connect
-                    </Button>
-                  </div>
-                </div>
-              ))}
-          </div>
+              <div className="crow out">
+                <div className="bub out">Checking your account with our server…</div>
+              </div>
+            </div>
+            {status?.connected ? (
+              <div className="notice notice-success" style={{ marginTop: "0.8rem" }}>
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>Connected — your bot answers on <b>{status.page_name}</b>.</span>
+              </div>
+            ) : null}
+            {status && !status.connected ? (
+              <div className="notice notice-error" style={{ marginTop: "0.8rem" }}>
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>Not connected yet — check the list on the right.</span>
+              </div>
+            ) : null}
+          </MockWindow>
         )
     }
+  }
+
+  /* ------------------------------ guidance ----------------------------- */
+
+  function renderActions() {
+    return (
+      <ul className="checklist" style={{ listStyle: "none" }}>
+        {step.actions.map((a, i) => {
+          const checked = (ticked[stepIndex] ?? [])[i] === true
+          return (
+            <li key={i}>
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => toggle(i)}
+                aria-label={"Mark done: " + a.text}
+                style={{ marginTop: "0.3rem", width: "1.05rem", height: "1.05rem", accentColor: "var(--primary)", flexShrink: 0 }}
+              />
+              <span>
+                {a.text}
+                {a.href ? (
+                  <>
+                    {" "}
+                    <a href={a.href} target="_blank" rel="noopener noreferrer" className="ulink" style={{ whiteSpace: "nowrap" }}>
+                      Open {a.external ? "in new tab" : ""} <ExternalLink className="h-3.5 w-3.5" style={{ display: "inline", verticalAlign: "-0.25em" }} />
+                    </a>
+                  </>
+                ) : null}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    )
+  }
+
+  function renderVerification() {
+    return (
+      <div className="stack-md">
+        <p className="lead" style={{ fontSize: "0.95rem" }}>
+          Done everything? We log into your account with your funnel credentials and ask the server whether a page is
+          connected to the bot.
+        </p>
+
+        {!status && !checking ? (
+          <button className="btn btn-primary btn-lg" onClick={verify} style={{ alignSelf: "flex-start" }}>
+            <RefreshCw className="h-4 w-4" /> Check my bot status
+          </button>
+        ) : null}
+
+        {checking ? (
+          <div className="notice" style={{ alignItems: "center" }}>
+            <Loader2 className="h-4 w-4 shrink-0" style={{ animation: "spin 0.7s linear infinite" }} />
+            <span>Checking your account on the server…</span>
+          </div>
+        ) : null}
+
+        {status ? (
+          status.connected ? (
+            <div className="notice notice-success" style={{ flexDirection: "column", gap: "0.6rem" }}>
+              <span className="row-sm">
+                <CheckCircle2 className="h-5 w-5 shrink-0" />
+                <b>Your bot is connected and live!</b>
+              </span>
+              <span className="text-sm">
+                Page: <b>{status.page_name}</b> · Bot: <b>{status.bot_name}</b>
+              </span>
+              <span>
+                <a className="btn btn-primary btn-sm" href={clientPanelLoginUrl()} target="_blank" rel="noopener noreferrer">
+                  Open my dashboard <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </span>
+            </div>
+          ) : (
+            <div className="notice notice-error" style={{ flexDirection: "column", gap: "0.6rem" }}>
+              <span className="row-sm">
+                <AlertCircle className="h-5 w-5 shrink-0" />
+                <b>Your bot is not connected yet</b>
+              </span>
+              <span className="text-sm">{status.message}</span>
+              <span className="row-sm">
+                <button className="btn btn-outline btn-sm" onClick={() => setStepIndex(2)}>
+                  <ArrowLeft className="h-4 w-4" /> Back to step 3
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={() => (window.location.href = clientPanelLoginUrl())}>
+                  Open my dashboard & connect <ExternalLink className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            </div>
+          )
+        ) : null}
+      </div>
+    )
+  }
+
+  /* ------------------------------ wizard shell ------------------------- */
+
+  function renderStepper() {
+    return (
+      <nav aria-label="Setup progress" className="between" style={{ gap: "0.5rem", justifyContent: "center" }}>
+        {STEPS.map((s, i) => {
+          const isDone = i < stepIndex
+          const isCurrent = i === stepIndex
+          const isLast = i === STEPS.length - 1
+          const circleStyle: React.CSSProperties = {
+            width: "2rem",
+            height: "2rem",
+            borderRadius: "50%",
+            display: "grid",
+            placeItems: "center",
+            fontSize: "0.8rem",
+            fontWeight: 700,
+            flexShrink: 0,
+            ...(isDone
+              ? { background: "var(--success-soft)", color: "var(--success)" }
+              : isCurrent
+                ? { background: "linear-gradient(135deg, var(--primary), #9333EA)", color: "#fff", boxShadow: "var(--shadow-primary)" }
+                : { background: "var(--muted)", color: "var(--muted-foreground)" }),
+          }
+          return (
+            <React.Fragment key={s.title}>
+              <span className="between" style={{ gap: "0.5rem" }}>
+                <span style={circleStyle}>{isDone || (isCurrent && stepIndex === STEPS.length - 1 && status?.connected) ? <CheckCircle2 className="h-4 w-4" /> : i + 1}</span>
+                <span
+                  className="field-hint"
+                  style={{
+                    fontWeight: isCurrent ? 700 : 500,
+                    color: isCurrent ? "var(--ink)" : undefined,
+                    whiteSpace: "nowrap",
+                    display: "none",
+                  }}
+                />
+              </span>
+              {!isLast ? <span style={{ flex: 1, height: 2, borderRadius: 2, background: isDone || (isCurrent && stepIndex === STEPS.length - 1) ? "var(--success)" : "var(--line)", minWidth: "1.25rem" }} /> : null}
+            </React.Fragment>
+          )
+        })}
+      </nav>
+    )
   }
 
   function renderWizard() {
     return (
       <div className="stack-lg">
-        <div className="flex items-center gap-3">
-          {STEP_TITLES.map((t, i) => (
-            <div key={t} className="flex-1">
-              <div
-                className={
-                  "h-1.5 rounded-full transition-colors " +
-                  (i <= wizardStep ? "bg-gradient-to-r from-primary to-[#9333EA]" : "bg-muted")
-                }
-              />
-              <p className={"mt-1 text-[10px] truncate " + (i === wizardStep ? "text-ink font-medium" : "text-mut")}>
-                {i + 1}. {t}
+        {renderStepper()}
+
+        <div className="grid md:grid-cols-2" style={{ gap: "1.75rem", alignItems: "start" }}>
+          <div className="reveal in-view">{renderVisual()}</div>
+
+          <div className="card-feature">
+            <div className="row-sm" style={{ marginBottom: "0.5rem" }}>
+              <span
+                style={{
+                  width: "2.6rem",
+                  height: "2.6rem",
+                  borderRadius: "0.85rem",
+                  display: "grid",
+                  placeItems: "center",
+                  color: "#fff",
+                  background: "linear-gradient(135deg, var(--primary), var(--accent))",
+                  boxShadow: "var(--shadow-md)",
+                }}
+              >
+                <step.icon className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="eyebrow">Step {stepIndex + 1} of {STEPS.length}</p>
+                <h2 className="h3" style={{ margin: 0 }}>{step.title}</h2>
+              </div>
+            </div>
+
+            <p className="lead" style={{ fontSize: "0.95rem", marginBottom: "1rem" }}>{step.intro}</p>
+
+            {stepIndex < STEPS.length - 1 ? renderActions() : renderVerification()}
+
+            {stepIndex < STEPS.length - 1 && step.tip ? (
+              <div className="notice" style={{ marginTop: "1rem", fontSize: "0.85rem" }}>
+                <ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
+                <span>{step.tip}</span>
+              </div>
+            ) : null}
+
+            <div className="row-sm" style={{ marginTop: "1.25rem" }}>
+              {stepIndex > 0 ? (
+                <button className="btn btn-outline" onClick={() => { setStepIndex((s) => s - 1); setStatus(null) }}>
+                  <ArrowLeft className="h-4 w-4" /> Back
+                </button>
+              ) : null}
+              {stepIndex < STEPS.length - 1 ? (
+                <button className="btn btn-primary" disabled={!done} onClick={() => { setStepIndex((s) => s + 1); setStatus(null) }}>
+                  Next step <ArrowRight className="h-4 w-4" />
+                </button>
+              ) : null}
+              {stepIndex < STEPS.length - 1 ? (
+                <button className="btn btn-ghost btn-sm" onClick={() => { setStepIndex(STEPS.length - 1); setStatus(null) }}>
+                  Skip to status check
+                </button>
+              ) : null}
+            </div>
+            {stepIndex < STEPS.length - 1 && !done ? (
+              <p className="field-hint" style={{ marginTop: "0.5rem" }}>
+                Tick every box above to unlock “Next step” — or jump straight to the final check.
               </p>
-            </div>
-          ))}
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-2 items-start">
-          <div>{renderWizardStep()}</div>
-          <div className="stack-lg">
-            <div className="flex items-center gap-2">
-              <span className="brand-mark"><MessagesSquare className="h-5 w-5" /></span>
-              <h3 className="h3 m-0">Step {wizardStep + 1} — {STEP_TITLES[wizardStep]}</h3>
-            </div>
-            {wizardStep === 0 && (
-              <div className="stack-sm text-sm text-soft">
-                <p className="m-0">This app is the technical bridge between your page and our system. It takes about 5 minutes, once.</p>
-                <a className="ulink inline-flex items-center gap-1" href="https://developers.facebook.com/apps" target="_blank" rel="noopener noreferrer">
-                  Open developers.facebook.com/apps <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              </div>
-            )}
-            {wizardStep === 1 && (
-              <div className="stack-sm text-sm text-soft">
-                <p className="m-0">This token lets our bot read and reply on your page. Copy it — you&apos;ll paste it in your dashboard.</p>
-                <a className="ulink inline-flex items-center gap-1" href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">
-                  Open the Graph API Explorer <ExternalLink className="h-3.5 w-3.5" />
-                </a>
-              </div>
-            )}
-            {wizardStep === 2 && (
-              <div className="stack-sm text-sm text-soft">
-                <p className="m-0">Log in to your dashboard and paste the token + App ID + App Secret on the <b>Page Connection</b> screen, then click Connect.</p>
-                <LinkButton href={clientPanelLoginUrl()} variant="default" size="sm" rightIcon={<ExternalLink className="h-3.5 w-3.5" />}>
-                  Log in to my dashboard
-                </LinkButton>
-              </div>
-            )}
-            {wizardStep === 3 && (
-              <div className="stack-sm text-sm text-soft">
-                <p className="m-0">Paste the <b>green verify token</b> (shown after connecting in your dashboard) into your app&apos;s webhook settings, with the callback URL above.</p>
-              </div>
-            )}
-            {wizardStep === 4 && (
-              <div className="stack-sm text-sm text-soft">
-                <p className="m-0">Message your page from a second Facebook account. Your bot should answer on your page&apos;s behalf within seconds.</p>
-              </div>
-            )}
-            {wizardStep === 5 && (
-              <div className="stack-sm text-sm text-soft">
-                <p className="m-0">We check with our server whether your page is connected to your account. If something is missing, we&apos;ll show you exactly where.</p>
-              </div>
-            )}
-
-            <div className="flex items-center gap-2">
-              {wizardStep > 0 && (
-                <Button variant="outline" onClick={() => setWizardStep((s) => s - 1)} leftIcon={<ArrowLeft className="h-4 w-4" />}>
-                  Back
-                </Button>
-              )}
-              {wizardStep < STEP_TITLES.length - 1 && (
-                <Button
-                  variant="gradient"
-                  onClick={() => setWizardStep((s) => s + 1)}
-                  rightIcon={<ArrowRight className="h-4 w-4" />}
-                >
-                  Next
-                </Button>
-              )}
-              {wizardStep < STEP_TITLES.length - 1 && (
-                <Button variant="ghost" size="sm" onClick={() => setWizardStep(STEP_TITLES.length - 1)}>
-                  Skip to check
-                </Button>
-              )}
-            </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -383,65 +515,52 @@ export default function SetupPage() {
   return (
     <section className="section bg-surface-2">
       <div className="container-x">
-        <Reveal>
-          <div className="text-center max-w-2xl mx-auto stack-md">
-            <p className="eyebrow">Step 3 of 3</p>
-            <h1 className="h2 mt-2">Configure your bot</h1>
-            <p className="text-soft">Account: <b>{creds.email}</b></p>
-          </div>
+        <Reveal className="section-head">
+          <span className="eyebrow">Step 3 of 3 · Bot setup</span>
+          <h1 className="h1">Configure your bot</h1>
+          <p className="lead" style={{ maxWidth: "30rem" }}>
+            Five short steps, each shown with exactly what to click. Account: <b>{creds.email}</b>
+          </p>
         </Reveal>
 
-        <Reveal>
-          <div className="max-w-4xl mx-auto mt-10 stack-lg">
-            {step === "ask" && (
-              <div className="auth-card stack-lg mx-auto">
-                <div className="flex items-center gap-2">
-                  <span className="brand-mark"><MessagesSquare className="h-5 w-5" /></span>
-                  <h3 className="h3 m-0">Do you already have a Facebook page?</h3>
-                </div>
-                <p className="text-sm text-soft m-0">
-                  Your bot lives on a Facebook Page. If you do not have one yet, we will show you how to create it in a few minutes.
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Button variant="outline" size="lg" onClick={() => setStep("creating")}>
-                    No, not yet
-                  </Button>
-                  <Button size="lg" variant="gradient" onClick={() => setStep("wizard")}>
-                    Yes, I have one
-                  </Button>
-                </div>
+        <Reveal style={{ marginTop: "2.5rem" }}>
+          {phase === "ask" ? (
+            <div className="auth-card" style={{ maxWidth: "34rem" }}>
+              <div className="row-sm" style={{ marginBottom: "0.9rem" }}>
+                <span className="brand-mark"><MessagesSquare className="h-5 w-5" /></span>
+                <h2 className="h3" style={{ margin: 0 }}>Do you already have a Facebook page?</h2>
               </div>
-            )}
-
-            {step === "creating" && (
-              <div className="auth-card stack-lg mx-auto">
-                <div className="flex items-center gap-2">
-                  <span className="brand-mark"><CheckCircle2 className="h-5 w-5" /></span>
-                  <h3 className="h3 m-0">Create your Facebook page</h3>
-                </div>
-                <ol className="stack-sm m-0 pl-5 text-sm text-soft">
-                  {CREATE_STEPS.map((s, i) => (
-                    <li key={i}>{s}</li>
-                  ))}
-                </ol>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <a
-                    href="https://www.facebook.com/pages/create"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 h-11 rounded-lg px-6 text-base bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 transition-[transform,box-shadow,background-color] duration-200 active:scale-[0.98]"
-                  >
-                    Open facebook.com/pages/create
-                  </a>
-                  <Button size="lg" variant="gradient" onClick={() => setStep("wizard")}>
-                    I've created my page
-                  </Button>
-                </div>
+              <p className="lead" style={{ fontSize: "0.95rem", marginBottom: "1.1rem" }}>
+                Your bot lives on a Facebook Page. If you do not have one yet, we’ll show you how — it takes a few minutes.
+              </p>
+              <div className="grid grid-cols-2" style={{ gap: "0.75rem" }}>
+                <button className="btn btn-outline btn-lg" onClick={() => setPhase("creating")}>No, not yet</button>
+                <button className="btn btn-primary btn-lg" onClick={() => setPhase("wizard")}>Yes, I have one</button>
               </div>
-            )}
+            </div>
+          ) : null}
 
-            {step === "wizard" && renderWizard()}
-          </div>
+          {phase === "creating" ? (
+            <div className="auth-card" style={{ maxWidth: "34rem" }}>
+              <div className="row-sm" style={{ marginBottom: "0.9rem" }}>
+                <span className="brand-mark"><CheckCircle2 className="h-5 w-5" /></span>
+                <h2 className="h3" style={{ margin: 0 }}>Create your Facebook page</h2>
+              </div>
+              <ul className="checklist" style={{ marginBottom: "1.1rem" }}>
+                {CREATE_STEPS.map((s, i) => (
+                  <li key={i}><CheckCircle2 className="ico" /><span>{s}</span></li>
+                ))}
+              </ul>
+              <div className="grid grid-cols-2" style={{ gap: "0.75rem" }}>
+                <a className="btn btn-outline btn-lg" href="https://www.facebook.com/pages/create" target="_blank" rel="noopener noreferrer">
+                  Open pages/create <ExternalLink className="h-4 w-4" />
+                </a>
+                <button className="btn btn-primary btn-lg" onClick={() => setPhase("wizard")}>I’ve created my page</button>
+              </div>
+            </div>
+          ) : null}
+
+          {phase === "wizard" ? renderWizard() : null}
         </Reveal>
       </div>
     </section>
