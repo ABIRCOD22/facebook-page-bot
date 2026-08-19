@@ -198,12 +198,12 @@ async def _process_message(entry: dict, event: dict):
     # exact-match only; fuzzy similarity is a later refinement.
     last_bot = None
     for h in reversed(history):
-        if h.get("sender_type") == "bot":
+        if h.sender_type == "bot":
             last_bot = h
             break
     if (
         last_bot
-        and last_bot.get("content") == ai_response.text
+        and last_bot.content == ai_response.text
         and not ai_response.quick_replies
     ):
         logger.info("Duplicate bot reply suppressed for page %s", page_fb_id)
