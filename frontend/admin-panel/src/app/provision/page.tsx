@@ -108,7 +108,7 @@ function ProvisionWizard() {
     if (!newClientId || !token.trim()) return
     setConnecting(true); setError("")
     try {
-      const r = await adminApi.provisionConnectPage(newClientId, { access_token: token.trim(), page_id: pageId })
+      const r = await adminApi.provisionConnectPage(newClientId, { page_access_token: token.trim(), page_id: pageId })
       setConnectedPage(r); setPageList([])
     } catch (e) { setError(e instanceof Error ? e.message : "Connect failed") }
     finally { setConnecting(false) }

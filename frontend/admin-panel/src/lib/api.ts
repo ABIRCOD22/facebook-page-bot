@@ -217,7 +217,7 @@ class AdminApiClient {
     )
   }
 
-  async provisionConnectPage(userId: string, body: { access_token: string; page_id?: string }) {
+  async provisionConnectPage(userId: string, body: { page_access_token: string; page_id?: string }) {
     return this.request<{ status: string; id: string; page_id: string; page_name: string; scan?: any }>(
       `/api/admin/users/${userId}/pages/connect`,
       { method: "POST", body: JSON.stringify(body) }
