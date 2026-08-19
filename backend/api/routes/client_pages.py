@@ -44,7 +44,10 @@ class ConnectByoRequest(BaseModel):
     redirect_uri: str
 
 
-async def _enforce_page_limit(db, user: User):
+async def _enforce_page_limit(db, user: User, connected_page_id: str | None = None):
+    """Re-connecting a page the user already owns must not count against the
+    plan limit — the funnel re-runs adopt the same page across fresh accounts.
+    """
     sub = (
         await db.execute(select(Subscription).where(Subscription.user_id == user.id))
     ).scalar_one_or_none()
@@ -56,7 +59,10 @@ async def _enforce_page_limit(db, user: User):
             )
         )
     ).scalars().all()
-    if len(active) >= max_pages:
+    owned = len(active)
+    if connected_page_id and any(p.page_id == connected_page_id for p in active):
+        owned -= 1  # reconnecting an already-owned page is not a new page
+    if owned >= max_pages:
         raise HTTPException(
             status_code=403,
             detail=f"Page limit reached for your plan (max {max_pages}).",
@@ -76,9 +82,10 @@ async def _save_tenant_page(
     page = (
         await db.execute(select(FacebookPage).where(FacebookPage.page_id == page_id))
     ).scalar_one_or_none()
-    if page and page.user_id != user.id:
-        raise HTTPException(status_code=400, detail="This page is already connected to another account.")
-
+    # Ownership follows the token: this user already proved the page is
+    # theirs by presenting a valid page access token (validate_token).
+    # Re-runs of the funnel/adoption across accounts transfer the page
+    # instead of hard-blocking with "already connected".
     if page is None:
         page = FacebookPage(page_id=page_id, page_name=page_name)
         db.add(page)
@@ -100,12 +107,14 @@ async def connect_page(
     user: User = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    await _enforce_page_limit(db, user)
-
     try:
         info = await validate_token(body.page_access_token)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Enforce the plan limit only after we know which page: re-connecting a
+    # page this user already owns is not a new page towards the limit.
+    await _enforce_page_limit(db, user, connected_page_id=info["page_id"])
 
     page = await _save_tenant_page(
         db,
@@ -156,8 +165,6 @@ async def connect_byo_app(
     page → configure the user's app webhook (app_id|app_secret token)
     → subscribe the page.
     """
-    await _enforce_page_limit(db, user)
-
     try:
         short_token = await exchange_code(body.app_id, body.app_secret, body.code, body.redirect_uri)
         long_token = await make_long_lived_user_token(body.app_id, body.app_secret, short_token)
@@ -171,7 +178,9 @@ async def connect_byo_app(
     candidate = pages[0]
     page_token = candidate.get("access_token")
     if not page_token:
-        raise HTTPException(status_code=400, detail="Meta did not return a page token. Re-check your app's permissions (pages_manage_metadata, pages_messaging, pages_read_engagement).")
+        raise HTTPException(status_code=400, detail="Meta did not return a page token. Re-check your app's permissions (pages_manage_metadata, pages_messaging, pages_broadcast, pages_read_engagement).")
+
+    await _enforce_page_limit(db, user, connected_page_id=candidate["id"])
 
     page = await _save_tenant_page(
         db,
