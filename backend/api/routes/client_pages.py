@@ -35,6 +35,7 @@ class ConnectRequest(BaseModel):
     page_access_token: str
     fb_app_id: str | None = None
     fb_app_secret: str | None = None
+    page_id: str | None = None  # chosen page when the pasted token is a user token
 
 
 class ConnectByoRequest(BaseModel):
@@ -42,6 +43,21 @@ class ConnectByoRequest(BaseModel):
     app_secret: str
     code: str
     redirect_uri: str
+
+
+class AvailableRequest(BaseModel):
+    access_token: str
+
+
+def _pick_chosen_page(pages: list[dict], page_id: str) -> dict | None:
+    return next((p for p in pages if p.get("id") == page_id), None)
+
+
+async def _require_page_info(token: str) -> dict:
+    try:
+        return await validate_token(token)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 async def _enforce_page_limit(db, user: User, connected_page_id: str | None = None):
@@ -101,16 +117,109 @@ async def _save_tenant_page(
     return page
 
 
+@router.post("/available")
+async def available_pages(
+    body: AvailableRequest,
+    user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """List the pages a pasted token can see — and what kind of token it is.
+
+    - /me/accounts returns data  → user token → all manageable pages listed.
+    - /me/accounts errors        → valid user token missing pages_show_list.
+    - /me/accounts empty         → page-scoped token → the one page it covers.
+
+    Only ids/names/tasks leave the server; page tokens stay server-side.
+    """
+    try:
+        listed = await list_manageable_pages(body.access_token)
+    except ValueError:
+        listed = None
+
+    if listed:
+        return {
+            "token_type": "user",
+            "pages": [
+                {
+                    "page_id": p.get("id"),
+                    "page_name": p.get("name") or f"Page {p.get('id')}",
+                    "tasks": p.get("tasks", []),
+                }
+                for p in listed
+            ],
+        }
+
+    info = await _require_page_info(body.access_token)
+    if listed is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This looks like a User Access Token without the pages_show_list permission. "
+                "Add pages_show_list (+ pages_messaging, pages_manage_metadata) in the Explorer, "
+                "generate the token again, and retry — or paste a Page Access Token to connect a single page."
+            ),
+        )
+    return {
+        "token_type": "page",
+        "pages": [{"page_id": info["page_id"], "page_name": info["page_name"], "tasks": []}],
+    }
+
+
 @router.post("/connect")
 async def connect_page(
     body: ConnectRequest,
     user: User = Depends(get_current_user),
     db=Depends(get_db),
 ):
-    try:
-        info = await validate_token(body.page_access_token)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    # Two token kinds:
+    #  - page token (no page_id): /me identifies the one page it covers.
+    #  - user token (+ page_id): /me/accounts lists pages; we resolve the
+    #    chosen page's own page-scoped token server-side. The broad user
+    #    token is used transiently and never persisted (least privilege).
+    page_access_token = body.page_access_token
+    if body.page_id:
+        try:
+            pages = await list_manageable_pages(body.page_access_token)
+        except ValueError:
+            pages = []
+        if pages:
+            chosen = _pick_chosen_page(pages, body.page_id)
+            if not chosen:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Selected page not found on this Meta account — generate the token again.",
+                )
+            chosen_token = chosen.get("access_token")
+            if not chosen_token:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Meta did not return a page token for that page. Re-check the app's "
+                        "permissions (pages_manage_metadata, pages_messaging)."
+                    ),
+                )
+            info = {"page_id": chosen["id"], "page_name": chosen.get("name") or f"Page {chosen['id']}"}
+            page_access_token = chosen_token
+        else:
+            info = await _require_page_info(body.page_access_token)
+            if info["page_id"] != body.page_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This access token belongs to a different page than the one you selected.",
+                )
+    else:
+        info = await _require_page_info(body.page_access_token)
+        # A user token must never be stored as a "page": if /me/accounts
+        # returns pages, this is a user token → require an explicit pick.
+        try:
+            probe = await list_manageable_pages(body.page_access_token)
+        except ValueError:
+            probe = []
+        if probe:
+            raise HTTPException(
+                status_code=400,
+                detail="That looks like a User Access Token. Use “Find my page” to choose a page, then connect it.",
+            )
 
     # Enforce the plan limit only after we know which page: re-connecting a
     # page this user already owns is not a new page towards the limit.
@@ -121,7 +230,7 @@ async def connect_page(
         user,
         info["page_id"],
         info["page_name"],
-        body.page_access_token,
+        page_access_token,
         body.fb_app_id,
         body.fb_app_secret,
         None,
@@ -143,12 +252,23 @@ async def connect_page(
         import logging
         logging.getLogger(__name__).warning("Webhook subscribe failed for page %s: %s", page.page_id, e)
 
+    # Auto-scan inline (contract: scan_page never raises — graceful
+    # degradation). Profiles the business, seeds the KB, and adopts the
+    # moderator voice when the user hasn't customized it.
+    scan = None
+    try:
+        scan = await scan_page(user.id, page)
+    except Exception as e:  # noqa
+        import logging
+        logging.getLogger(__name__).warning("Auto-scan failed for page %s: %s", page.page_id, e)
+
     return {
         "status": "connected",
         "id": page.id,
         "page_id": page.page_id,
         "page_name": page.page_name,
         "verify_token": page.verify_token or None,
+        "scan": scan,
     }
 
 

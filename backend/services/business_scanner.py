@@ -129,6 +129,21 @@ def build_profile(core: dict, post_texts: list[str], website_text: str) -> dict:
     }
 
 
+def build_moderator_prompt(profile: dict) -> str:
+    """Default system prompt for fresh pages: the bot speaks as the page's
+    moderator. Pure + deterministic so it can be asserted in a check script."""
+    name = profile.get("page_name") or "this page"
+    prompt = (
+        f'You are the AI moderator of the page "{name}". You represent the page\'s team: '
+        "welcome customers, answer their questions from the knowledge base, keep conversations "
+        "polite and on-topic, and hand over to a human for anything you cannot answer."
+    )
+    summary = (profile.get("summary") or "").strip()
+    if summary:
+        prompt += f" About the business: {summary[:400]}"
+    return prompt
+
+
 # ---------- networked fetchers (never raise) ----------
 
 async def _graph_get(url: str) -> dict:
@@ -241,11 +256,21 @@ async def seed_knowledge(user_id: str, profile: dict, post_texts: list[str]) -> 
 
 
 async def scan_page(user_id: str, page) -> dict:
-    """Full scan: page info + posts + website → profile → KB seed. Never raises."""
+    """Full scan: page info + posts + website → profile → KB seed. Never raises.
+    Adopts the moderator voice when the user hasn't customized tone/prompt."""
     core = await fetch_page_core(page)
     posts = await fetch_recent_posts(page)
     website = await fetch_website_text((core.get("website") or "").strip())
     profile = build_profile(core, posts, website)
+
+    # Only fill defaults a user hasn't touched: scaffold tone is
+    # "professional_friendly", custom prompts start blank.
+    mods: dict = {}
+    if page.bot_tone == "professional_friendly":
+        mods["bot_tone"] = profile["tone"]
+    if not (page.system_prompt or "").strip():
+        mods["system_prompt"] = build_moderator_prompt(profile)
+
     try:
         async with AsyncSessionFactory() as session:
             await session.execute(
@@ -255,6 +280,7 @@ async def scan_page(user_id: str, page) -> dict:
                     business_profile=json.dumps(profile),
                     scan_status="done",
                     scanned_at=datetime.utcnow(),
+                    **mods,
                 )
             )
             await session.commit()
@@ -266,4 +292,5 @@ async def scan_page(user_id: str, page) -> dict:
         "kb_added": added,
         "posts_scanned": len(posts),
         "website_scanned": bool(website),
+        "auto_voice": bool(mods),
     }
