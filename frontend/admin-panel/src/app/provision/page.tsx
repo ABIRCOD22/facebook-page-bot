@@ -1,7 +1,7 @@
 "use client"
 
-import { Suspense, useCallback, useEffect, useState } from "react"
-import { useSearchParams, useRouter } from "next/navigation"
+import { Suspense, useCallback, useEffect, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { adminApi } from "@/lib/api"
 import { useAdminAuth } from "@/lib/auth-context"
 import {
@@ -37,7 +37,6 @@ export default function ProvisionPage() {
 }
 
 function ProvisionWizard() {
-  const searchParams = useSearchParams()
   const router = useRouter()
   const { user, loading: authLoading } = useAdminAuth()
   const [authed, setAuthed] = useState(false)
@@ -71,11 +70,14 @@ function ProvisionWizard() {
   const [step, setStep] = useState(0)
   const [error, setError] = useState("")
 
+  const routerRef = useRef(router)
+  routerRef.current = router
+
   useEffect(() => {
     if (authLoading) return
-    if (!user) router.push("/login")
+    if (!user) routerRef.current.push("/login")
     else setAuthed(true)
-  }, [authLoading, user, router])
+  }, [authLoading, user])
 
   const loadUsers = useCallback(async () => {
     try {
@@ -88,11 +90,12 @@ function ProvisionWizard() {
 
   // FB callback: owner approved in the popup, redirected here with ?code&state
   useEffect(() => {
-    const code = searchParams.get("code")
-    const state = searchParams.get("state")
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get("code")
+    const state = params.get("state")
     if (!code || !state || !userId || fbBusy) return
     window.opener?.postMessage({ source: "chatrix-provision", code, state }, "*")
-  }, [searchParams, userId, fbBusy])
+  }, [userId, fbBusy])
 
   useEffect(() => {
     const onMsg = async (e: MessageEvent) => {
