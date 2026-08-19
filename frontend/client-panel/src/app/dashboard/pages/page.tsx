@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { MessagesSquare, Link2, Trash2, Loader2, CheckCircle2, ScanSearch, ShieldCheck } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { api } from "@/lib/api"
@@ -44,6 +44,7 @@ export default function PagesPage() {
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [verifyToken, setVerifyToken] = useState<string | null>(null)
+  const [hasPage, setHasPage] = useState<boolean | null>(null)
 
   async function load() {
     try {
@@ -134,6 +135,79 @@ export default function PagesPage() {
         <h1 className="text-3xl font-bold" style={{ fontFamily: "var(--font-heading)" }}>Page Connection</h1>
         <p className="text-muted-foreground mt-1">Connect the Facebook page your bot will answer on.</p>
       </div>
+
+      {pages.length === 0 && hasPage === null && (
+        <Card className="border-[#1877F2]/30 bg-[#1877F2]/5">
+          <CardContent className="py-6 flex flex-col sm:flex-row sm:items-center gap-4">
+            <div className="flex-1">
+              <p className="font-semibold text-lg" style={{ fontFamily: "var(--font-heading)" }}>Let&apos;s get your bot online</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                First things first — do you already have a Facebook page for your business?
+              </p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button variant="outline" onClick={() => setHasPage(false)}>No, not yet</Button>
+              <Button onClick={() => setHasPage(true)}>Yes, I have one</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {pages.length === 0 && hasPage === false && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Create your Facebook page first</CardTitle>
+            <CardDescription>Your bot lives on a Facebook Page — here&apos;s how to create one in a few minutes.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-2">
+              <li>Go to facebook.com/pages/create and log in to the Facebook account that will manage the page.</li>
+              <li>Choose a category that matches your business (e.g. Restaurant, Clinic, Online Store).</li>
+              <li>Add your business name, profile photo and cover photo — the bot will answer using your page&apos;s identity.</li>
+              <li>Publish the page. You do not need to post anything yet.</li>
+            </ol>
+            <div className="flex gap-2">
+              <a
+                href="https://www.facebook.com/pages/create"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={buttonVariants({ variant: "default" })}
+              >
+                Open facebook.com/pages/create
+              </a>
+              <Button variant="outline" onClick={() => setHasPage(true)}>I&apos;ve created my page</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {pages.length === 0 && hasPage === true && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Next steps — follow in order</CardTitle>
+            <CardDescription>Non-technical walkthrough. Each step is a few clicks.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ol className="text-sm text-muted-foreground list-decimal list-inside space-y-2">
+              <li>
+                Open <span className="font-mono text-xs">developers.facebook.com/tools/explorer</span> while logged in as the
+                admin of your page → click <b>Get Page Access Token</b> and choose your page.
+              </li>
+              <li>Copy the long token (starts with EAAB…), paste it in <b>Option A</b> below, and click Connect.</li>
+              <li>
+                Optionally add your Meta App ID (and App Secret) in Option A — then copy the green{" "}
+                <b>verify token</b> shown after connecting.
+              </li>
+              <li>
+                In the Meta App Dashboard → Messenger → Webhooks, click Edit → paste the verify token, and set the callback URL to{" "}
+                <span className="font-mono text-xs break-all select-all">https://facebook-page-bot-rdkt.onrender.com/api/webhook</span>.
+              </li>
+              <li>Message your page from a second Facebook account — the bot should reply within a few seconds.</li>
+              <li>Come back here and press <b>Scan business</b> to auto-profile your page.</li>
+            </ol>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-6">
         <Card>
