@@ -32,8 +32,12 @@ class Settings(BaseSettings):
     ADMIN_EMAIL: str = ""
     ADMIN_PASSWORD: str = ""
 
-    # CORS
-    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002"
+    # CORS — dev + deployed panels; override in env if the list changes
+    ALLOWED_ORIGINS: str = (
+        "http://localhost:3000,http://localhost:3001,http://localhost:3002,"
+        "https://fb-autoreply-website.netlify.app,https://fb-autoreply-admin.netlify.app,"
+        "https://fb-autoreply-client.netlify.app"
+    )
 
     # App
     APP_ENV: str = "development"
