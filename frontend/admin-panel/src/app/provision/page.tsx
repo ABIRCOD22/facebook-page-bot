@@ -5,26 +5,13 @@ import { useRouter } from "next/navigation"
 import { adminApi } from "@/lib/api"
 import { useAdminAuth } from "@/lib/auth-context"
 import {
-  Bot, CheckCircle2, Copy, ExternalLink, Fingerprint, KeyRound, Loader2, Save, ScanSearch,
+  Bot, CheckCircle2, Copy, ExternalLink, Fingerprint, KeyRound, Loader2, ScanSearch,
   UserPlus, Wand2,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-
-const TONES = [
-  { value: "professional_friendly", label: "Professional & friendly" },
-  { value: "casual", label: "Casual" },
-  { value: "formal", label: "Formal" },
-  { value: "witty", label: "Witty" },
-]
-const LANGUAGES = [
-  { value: "auto", label: "Auto-detect" },
-  { value: "en_only", label: "English only" },
-  { value: "bn_only", label: "Bangla only" },
-  { value: "bilingual", label: "Bilingual EN + BN" },
-]
 
 const STEPS = ["Client", "Connect", "Done"]
 
@@ -44,24 +31,15 @@ function ProvisionWizard() {
   const routerRef = useRef(router)
   routerRef.current = router
 
-  useEffect(() => {
-    if (authLoading) return
-    if (!user) routerRef.current.push("/login")
-    else setAuthed(true)
-  }, [authLoading, user])
-
-  // shared
   const [step, setStep] = useState(0)
   const [error, setError] = useState("")
 
-  // step 1: create client
   const [clientEmail, setClientEmail] = useState("")
   const [clientName, setClientName] = useState("")
   const [creating, setCreating] = useState(false)
   const [newClientId, setNewClientId] = useState<string | null>(null)
   const [newPassword, setNewPassword] = useState<string | null>(null)
 
-  // step 2: connect page
   const [token, setToken] = useState("")
   const [pageList, setPageList] = useState<any[]>([])
   const [connecting, setConnecting] = useState(false)
@@ -69,13 +47,40 @@ function ProvisionWizard() {
   const [fbState, setFbState] = useState("")
   const [connectedPage, setConnectedPage] = useState<any>(null)
   const [scanning, setScanning] = useState(false)
-  const [scanDone, setScanDone] = useState(false)
 
   const [copied, setCopied] = useState(false)
 
-  if (!authed) return null
+  useEffect(() => {
+    if (authLoading) return
+    if (!user) routerRef.current.push("/login")
+    else setAuthed(true)
+  }, [authLoading, user])
 
-  // ── Step 1: create the client account ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get("code")
+    const state = params.get("state")
+    if (!code || !state || !newClientId || fbBusy) return
+    window.opener?.postMessage({ source: "chatrix-provision", code, state }, "*")
+  }, [newClientId, fbBusy])
+
+  useEffect(() => {
+    const onMsg = async (e: MessageEvent) => {
+      const d = e.data
+      if (!d || d.source !== "chatrix-provision" || !d.code || !d.state) return
+      if (!newClientId) return
+      if (d.state !== fbState) { setError("Facebook state mismatch — start again."); return }
+      setFbBusy(true); setError("")
+      try {
+        const r = await adminApi.provisionFbComplete(newClientId, d.code, d.state)
+        setPageList(r.pages.map((p: any) => ({ id: p.page_id, name: p.page_name })))
+      } catch (e) { setError(e instanceof Error ? e.message : "Facebook sign-in failed") }
+      finally { setFbBusy(false) }
+    }
+    window.addEventListener("message", onMsg)
+    return () => window.removeEventListener("message", onMsg)
+  }, [newClientId, fbState])
+
   const createClient = async () => {
     if (!clientEmail.trim()) { setError("Enter the client's email."); return }
     setCreating(true); setError("")
@@ -88,7 +93,6 @@ function ProvisionWizard() {
     finally { setCreating(false) }
   }
 
-  // ── Step 2: connect Facebook page ──
   const findPages = async () => {
     if (!newClientId || !token.trim()) { setError("Paste the page token first."); return }
     setConnecting(true); setError("")
@@ -120,31 +124,6 @@ function ProvisionWizard() {
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to start Facebook sign-in"); setFbBusy(false) }
   }
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const code = params.get("code")
-    const state = params.get("state")
-    if (!code || !state || !newClientId || fbBusy) return
-    window.opener?.postMessage({ source: "chatrix-provision", code, state }, "*")
-  }, [newClientId, fbBusy])
-
-  useEffect(() => {
-    const onMsg = async (e: MessageEvent) => {
-      const d = e.data
-      if (!d || d.source !== "chatrix-provision" || !d.code || !d.state) return
-      if (!newClientId) return
-      if (d.state !== fbState) { setError("Facebook state mismatch — start again."); return }
-      setFbBusy(true); setError("")
-      try {
-        const r = await adminApi.provisionFbComplete(newClientId, d.code, d.state)
-        setPageList(r.pages.map((p: any) => ({ id: p.page_id, name: p.page_name })))
-      } catch (e) { setError(e instanceof Error ? e.message : "Facebook sign-in failed") }
-      finally { setFbBusy(false) }
-    }
-    window.addEventListener("message", onMsg)
-    return () => window.removeEventListener("message", onMsg)
-  }, [newClientId, fbState])
-
   const pickFbPage = async (pageId: string) => {
     if (!newClientId) return
     setFbBusy(true); setError("")
@@ -155,7 +134,6 @@ function ProvisionWizard() {
     finally { setFbBusy(false) }
   }
 
-  // ── Step 3: auto-scan + deliver ──
   const runScanAndDeliver = async () => {
     if (!connectedPage?.id) return
     setScanning(true); setError("")
@@ -167,7 +145,7 @@ function ProvisionWizard() {
         auto_handover_after: 6,
       })
       await adminApi.provisionScan(connectedPage.id)
-      setScanDone(true); setStep(2)
+      setStep(2)
     } catch (e) { setError(e instanceof Error ? e.message : "Scan failed") }
     finally { setScanning(false) }
   }
@@ -177,6 +155,8 @@ function ProvisionWizard() {
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }
+
+  if (authLoading || !authed) return null
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -189,7 +169,6 @@ function ProvisionWizard() {
         </p>
       </div>
 
-      {/* stepper */}
       <div className="flex items-center gap-2 mb-6 text-sm">
         {STEPS.map((s, i) => (
           <div key={s} className="flex items-center gap-2">
@@ -206,7 +185,6 @@ function ProvisionWizard() {
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{error}</div>
       )}
 
-      {/* ─── Step 0: Create client ─── */}
       {step === 0 && (
         <Card>
           <CardContent className="p-5 space-y-4">
@@ -232,14 +210,12 @@ function ProvisionWizard() {
         </Card>
       )}
 
-      {/* ─── Step 1: Connect page ─── */}
       {step === 1 && (
         <div className="space-y-6">
           <p className="text-sm text-muted-foreground">
             Client created. Now connect their Facebook page — the bot will auto-train from it.
           </p>
 
-          {/* FB Login path */}
           <Card>
             <CardContent className="p-5">
               <div className="flex items-center justify-between">
@@ -269,7 +245,6 @@ function ProvisionWizard() {
             <div className="h-px flex-1 bg-border" /> OR <div className="h-px flex-1 bg-border" />
           </div>
 
-          {/* Token paste path */}
           <Card>
             <CardContent className="p-5 space-y-3">
               <h3 className="font-semibold flex items-center gap-2"><KeyRound className="w-5 h-5 text-primary" /> Paste a page access token</h3>
@@ -292,7 +267,6 @@ function ProvisionWizard() {
             </CardContent>
           </Card>
 
-          {/* After page connected → auto-scan */}
           {connectedPage && (
             <Card>
               <CardContent className="p-5 space-y-4">
@@ -312,7 +286,6 @@ function ProvisionWizard() {
         </div>
       )}
 
-      {/* ─── Step 2: Done — hand over creds ─── */}
       {step === 2 && (
         <Card>
           <CardContent className="p-5 space-y-4">
@@ -338,7 +311,7 @@ function ProvisionWizard() {
             <div className="flex justify-end">
               <Button size="sm" variant="ghost" onClick={() => {
                 setStep(0); setClientEmail(""); setClientName(""); setNewClientId(null); setNewPassword(null)
-                setConnectedPage(null); setScanDone(false); setToken(""); setPageList([]); setFbState("")
+                setConnectedPage(null); setToken(""); setPageList([]); setFbState("")
               }}>
                 Configure another bot
               </Button>
