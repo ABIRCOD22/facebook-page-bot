@@ -62,3 +62,47 @@ export async function registerClientUser(payload: RegisterPayload): Promise<Regi
 export function clientPanelLoginUrl() {
   return SITE.clientPanelUrl
 }
+
+const CREDS_KEY = "chatrix_creds"
+const PASSWORD_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"
+
+/** Generates a 12-char human-readable password (system hands out the login). */
+export function generatePassword(): string {
+  const bytes = new Uint8Array(12)
+  crypto.getRandomValues(bytes)
+  let out = ""
+  for (const b of bytes) out += PASSWORD_CHARS[b % PASSWORD_CHARS.length]
+  return out
+}
+
+export interface ClientCreds {
+  email: string
+  password: string
+}
+
+export function saveCreds(creds: ClientCreds) {
+  try {
+    sessionStorage.setItem(CREDS_KEY, JSON.stringify(creds))
+  } catch {
+    /* ignore */
+  }
+}
+
+export function loadCreds(): ClientCreds | null {
+  try {
+    const raw = sessionStorage.getItem(CREDS_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as ClientCreds
+    return parsed && parsed.email && parsed.password ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export function clearCreds() {
+  try {
+    sessionStorage.removeItem(CREDS_KEY)
+  } catch {
+    /* ignore */
+  }
+}
