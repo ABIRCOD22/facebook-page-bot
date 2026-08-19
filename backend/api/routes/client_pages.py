@@ -31,7 +31,9 @@ from services.page_connector import (
 router = APIRouter(prefix="/api/client/pages", tags=["client-pages"])
 settings = get_settings()
 
-FB_SCOPES = "pages_show_list,pages_messaging,pages_manage_metadata"
+# business_management is a documented Meta dependency of pages_messaging /
+# pages_show_list for apps serving other businesses (App Review submission).
+FB_SCOPES = "pages_show_list,pages_messaging,pages_manage_metadata,business_management"
 FB_STAGING_TTL = 600  # 10 minutes to finish picking a page after FB login
 # ponytail: single-process in-memory OAuth staging (user token exchanged once,
 # only per-page tokens cached briefly). Ceiling: Render free = one instance,
@@ -209,7 +211,6 @@ FB_REDIRECT_URI = "https://fb-autoreply-website.netlify.app/setup"
 
 class FbCompleteRequest(BaseModel):
     code: str
-    redirect_uri: str
     state: str
 
 
@@ -228,6 +229,10 @@ async def fb_complete(
     Code → short-lived user token → long-lived (~60d) → /me/accounts.
     The long-lived user token is used once and discarded; only the (already
     non-expiring) per-page tokens are kept, in a short-lived staging entry.
+
+    The redirect_uri used for the exchange is always the server's own
+    settings.FB_REDIRECT_URI — the dialog URL was built with it, and Meta
+    rejects a mismatched exchange. Never trust a client-supplied one.
     """
     staged = _fb_staging.get(user.id)
     if (
@@ -238,7 +243,7 @@ async def fb_complete(
         raise HTTPException(status_code=400, detail="This Facebook sign-in link is stale — start again.")
     try:
         short = await exchange_code(
-            settings.FB_APP_ID, settings.FB_APP_SECRET, body.code, body.redirect_uri
+            settings.FB_APP_ID, settings.FB_APP_SECRET, body.code, settings.FB_REDIRECT_URI
         )
         long = await make_long_lived_user_token(settings.FB_APP_ID, settings.FB_APP_SECRET, short)
         pages = await list_manageable_pages(long)
