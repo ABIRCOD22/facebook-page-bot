@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_ADMIN_API_URL || "http://localhost:8000"
+const API_BASE = process.env.NEXT_PUBLIC_ADMIN_API_URL || "https://facebook-page-bot-rdkt.onrender.com"
 
 export interface AdminUser {
   id: string
@@ -32,8 +32,9 @@ class AdminApiClient {
     const res = await fetch(`${this.baseUrl}${path}`, { ...options, headers })
     if (res.status === 204) return undefined as T
     if (!res.ok) {
-      const error: ApiError = await res.json().catch(() => ({ detail: "Request failed" }))
-      throw new Error(error.detail || `HTTP ${res.status}`)
+      const error: any = await res.json().catch(() => ({ detail: "Request failed" }))
+      const detail = typeof error.detail === "object" ? JSON.stringify(error.detail) : error.detail
+      throw new Error(detail || `HTTP ${res.status}`)
     }
     return res.json()
   }
@@ -80,7 +81,7 @@ class AdminApiClient {
   }
 
   async createUser(body: Record<string, any>) {
-    return this.request<{ ok: boolean; id: string }>("/api/admin/users", {
+    return this.request<{ ok: boolean; id: string; password?: string | null }>("/api/admin/users", {
       method: "POST",
       body: JSON.stringify(body),
     })
@@ -206,6 +207,63 @@ class AdminApiClient {
       method: "POST",
       body: JSON.stringify({ target }),
     })
+  }
+
+  // ---- White-glove provisioning (configure a new bot for a client) ----
+  async provisionFindPages(userId: string, accessToken: string) {
+    return this.request<{ pages: any[]; token_type?: string }>(
+      `/api/admin/users/${userId}/pages/available`,
+      { method: "POST", body: JSON.stringify({ access_token: accessToken }) }
+    )
+  }
+
+  async provisionConnectPage(userId: string, body: { access_token: string; page_id?: string }) {
+    return this.request<{ status: string; id: string; page_id: string; page_name: string; scan?: any }>(
+      `/api/admin/users/${userId}/pages/connect`,
+      { method: "POST", body: JSON.stringify(body) }
+    )
+  }
+
+  async provisionFbAuthorize(userId: string) {
+    return this.request<{ auth_url: string; state: string }>(
+      `/api/admin/users/${userId}/fb/authorize`,
+      { method: "POST" }
+    )
+  }
+
+  async provisionFbComplete(userId: string, code: string, state: string) {
+    return this.request<{ token_type: string; pages: { page_id: string; page_name: string; tasks: string[] }[] }>(
+      `/api/admin/users/${userId}/fb/complete`,
+      { method: "POST", body: JSON.stringify({ code, state }) }
+    )
+  }
+
+  async provisionFbSelect(userId: string, pageId: string) {
+    return this.request<{ status: string; id: string; page_id: string; page_name: string; scan?: any }>(
+      `/api/admin/users/${userId}/fb/select`,
+      { method: "POST", body: JSON.stringify({ page_id: pageId }) }
+    )
+  }
+
+  async provisionUpdateConfig(pageDbId: string, body: Record<string, any>) {
+    return this.request<{ status: string; message: string }>(
+      `/api/admin/bots/${pageDbId}/config`,
+      { method: "PUT", body: JSON.stringify(body) }
+    )
+  }
+
+  async provisionScan(pageDbId: string) {
+    return this.request<{ status: string; summary?: any; error?: string }>(
+      `/api/admin/bots/${pageDbId}/scan`,
+      { method: "POST" }
+    )
+  }
+
+  async provisionResetPassword(userId: string, password?: string) {
+    return this.request<{ ok: boolean; password: string }>(
+      `/api/admin/users/${userId}/reset-password`,
+      { method: "POST", body: JSON.stringify({ password: password || null }) }
+    )
   }
 
   // ---- Settings & Alerts ----
