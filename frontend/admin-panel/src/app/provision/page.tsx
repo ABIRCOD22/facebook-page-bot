@@ -248,6 +248,11 @@ function ProvisionWizard() {
           <Card>
             <CardContent className="p-5 space-y-3">
               <h3 className="font-semibold flex items-center gap-2"><KeyRound className="w-5 h-5 text-primary" /> Paste a page access token</h3>
+              <p className="text-sm text-muted-foreground">
+                Ask the client to open the{" "}
+                <a href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">Facebook Graph API Explorer</a>,{" "}
+                select their app, grant <code className="text-xs bg-muted px-1 py-0.5 rounded">pages_manage_metadata</code> and <code className="text-xs bg-muted px-1 py-0.5 rounded">pages_read_engagement</code> permissions, then copy the <strong>Page Access Token</strong>.
+              </p>
               <div className="flex gap-2">
                 <Input type="password" placeholder="EAA…" value={token} onChange={(e) => { setToken(e.target.value); setPageList([]) }} />
                 <Button size="sm" variant="outline" disabled={connecting || !token.trim()} onClick={findPages}>
