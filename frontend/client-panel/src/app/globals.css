@@ -88,3 +88,13 @@ h1, h2, h3, h4, h5, h6 {
 .animate-slide-in {
   animation: slide-in 0.3s ease-out forwards;
 }
+
+.ulink {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+}
+.ulink:hover {
+  color: var(--secondary);
+}

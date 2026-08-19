@@ -39,7 +39,7 @@ def _generation_config(**overrides):
         "temperature": 0.7,
         "top_p": 0.8,
         "top_k": 40,
-        "max_output_tokens": 500,
+        "max_output_tokens": 1024,
         "safety_settings": [
             types.SafetySetting(
                 category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,

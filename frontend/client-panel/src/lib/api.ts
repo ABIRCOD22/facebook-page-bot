@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://facebook-page-bot-rdkt.onrender.com"
 
 interface AuthResponse {
   access_token: string
@@ -254,6 +254,21 @@ class ApiClient {
       method: "POST",
       body: JSON.stringify({ content }),
     })
+  }
+
+  // ---- Dashboard stats ----
+  async getStats() {
+    return this.request<{
+      conversations_today: number
+      messages_today: number
+      bot_responses_today: number
+      avg_response_time_ms: number
+      active_conversations: number
+      total_conversations: number
+      messages_7d: Array<{ date: string; count: number }>
+      bot_status: string
+      connected_page: string | null
+    }>("/api/client/stats")
   }
 }
 

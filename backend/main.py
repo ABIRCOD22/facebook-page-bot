@@ -10,6 +10,7 @@ from api.routes.client_products import router as client_products_router
 from api.routes.client_knowledge import router as client_knowledge_router
 from api.routes.client_subscription import router as client_subscription_router
 from api.routes.client_conversations import router as client_conversations_router
+from api.routes.client_stats import router as client_stats_router
 from api.routes.webhook import router as webhook_router
 from api.routes.admin_auth import router as admin_auth_router
 from api.routes.admin_overview import router as admin_overview_router
@@ -109,6 +110,7 @@ app.include_router(client_knowledge_router)
 app.include_router(client_subscription_router)
 app.include_router(client_pages_router)
 app.include_router(client_conversations_router)
+app.include_router(client_stats_router)
 app.include_router(admin_auth_router)
 app.include_router(admin_overview_router)
 app.include_router(admin_users_router)

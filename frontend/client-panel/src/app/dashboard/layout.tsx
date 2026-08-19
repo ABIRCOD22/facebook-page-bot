@@ -3,6 +3,8 @@
 import { useEffect, type ReactNode } from "react"
 import { useRouter } from "next/navigation"
 import { api } from "@/lib/api"
+import { Sidebar } from "@/components/sidebar"
+import { Loader2 } from "lucide-react"
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter()
@@ -18,5 +20,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       .catch(() => {})
   }, [router])
 
-  return <>{children}</>
+  return (
+    <div className="min-h-screen bg-[#F8FAFC]">
+      <Sidebar />
+      <main className="lg:ml-64 p-6 lg:p-8">
+        {children}
+      </main>
+    </div>
+  )
 }
