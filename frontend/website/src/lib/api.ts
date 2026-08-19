@@ -106,3 +106,57 @@ export function clearCreds() {
     /* ignore */
   }
 }
+
+export interface BotStatus {
+  ok: boolean
+  connected: boolean
+  page_name?: string
+  bot_name?: string
+  message: string
+}
+
+/**
+ * Logs in with the funnel credentials and asks the backend whether a
+ * Facebook page is connected for this account.
+ */
+export async function checkBotConnection(creds: ClientCreds): Promise<BotStatus> {
+  try {
+    const loginRes = await fetch(`${SITE.apiUrl}/api/client/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: creds.email, password: creds.password }),
+    })
+    if (!loginRes.ok) {
+      return {
+        ok: true,
+        connected: false,
+        message:
+          loginRes.status === 401
+            ? "Could not log in with these credentials. If you changed your password in the dashboard, log in there first."
+            : `Login failed (${loginRes.status}). Please try again.`,
+      }
+    }
+    const login = await loginRes.json()
+    const pagesRes = await fetch(`${SITE.apiUrl}/api/client/pages`, {
+      headers: { Authorization: `Bearer ${login.access_token}` },
+    })
+    if (!pagesRes.ok) return { ok: true, connected: false, message: "Could not check your pages. Please try again." }
+    const pages = (await pagesRes.json()).pages as { page_name: string; bot_name: string }[]
+    if (pages && pages.length > 0) {
+      return {
+        ok: true,
+        connected: true,
+        page_name: pages[0].page_name,
+        bot_name: pages[0].bot_name,
+        message: `Your bot is connected to "${pages[0].page_name}" and running.`,
+      }
+    }
+    return {
+      ok: true,
+      connected: false,
+      message: "No page is connected yet for this account. Go to your dashboard and connect your Facebook page.",
+    }
+  } catch {
+    return { ok: false, connected: false, message: "Could not reach the server. Please try again in a moment." }
+  }
+}
