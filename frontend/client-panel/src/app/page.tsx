@@ -1,8 +1,8 @@
 "use client"
 
 import { AuthProvider } from "@/lib/auth-context"
-import { useRouter } from "next/navigation"
-import { useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { useEffect, Suspense } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -20,6 +20,12 @@ function LoginForm() {
   const [loading, setLoading] = useState(false)
   const { login, user } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    setEmail(searchParams.get("email") ?? "")
+    setPassword(searchParams.get("password") ?? "")
+  }, [searchParams])
 
   useEffect(() => {
     if (user) router.push("/dashboard")
@@ -124,7 +130,9 @@ function LoginForm() {
 export default function Home() {
   return (
     <AuthProvider>
-      <LoginForm />
+      <Suspense fallback={null}>
+        <LoginForm />
+      </Suspense>
     </AuthProvider>
   )
 }

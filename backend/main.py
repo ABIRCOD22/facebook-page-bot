@@ -21,6 +21,7 @@ from api.routes.admin_analytics import router as admin_analytics_router
 from api.routes.admin_revenue import router as admin_revenue_router
 from api.routes.admin_kb_templates import router as admin_kb_templates_router
 from api.routes.admin_system import router as admin_system_router
+from api.routes.admin_provision import router as admin_provision_router
 from config import get_settings
 from database.connection import AsyncSessionFactory, close_db, init_db
 from utils.password import hash_password
@@ -118,6 +119,7 @@ app.include_router(admin_analytics_router)
 app.include_router(admin_revenue_router)
 app.include_router(admin_kb_templates_router)
 app.include_router(admin_system_router)
+app.include_router(admin_provision_router)
 
 
 @app.get("/")

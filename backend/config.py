@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     CLIENT_PANEL_URL: str = "https://fb-autoreply-client.netlify.app"
     WEBHOOK_PUBLIC_URL: str = "https://facebook-page-bot-rdkt.onrender.com"
 
+    # Where the Facebook Login dialog bounces back for admin-led provisioning
+    # (owner approves in a popup during onboarding; admin completes the pick).
+    FB_ADMIN_REDIRECT_URI: str = "https://fb-autoreply-admin.netlify.app/provision"
+
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent / ".env",
         env_file_encoding="utf-8",

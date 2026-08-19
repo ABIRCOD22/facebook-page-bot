@@ -43,7 +43,7 @@ class SubscriptionUpdate(BaseModel):
 
 class CreateUserBody(BaseModel):
     email: EmailStr
-    password: str
+    password: str | None = None  # omitted → auto-generated (delivery model)
     full_name: str
     role: str = "user"
     tier: str | None = None  # if omitted: free_trial / active / 7 days
@@ -56,9 +56,14 @@ async def create_user(body: CreateUserBody, admin: User = Depends(require_admin)
     if existing is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already registered")
 
+    # White-glove delivery: admin provisions the account and hands the creds
+    # over — generate a password when none was supplied.
+    import secrets
+    password = body.password or secrets.token_urlsafe(9)[:12]
+
     user = User(
         email=body.email,
-        password_hash=hash_password(body.password),
+        password_hash=hash_password(password),
         full_name=body.full_name,
         role=body.role if body.role in ("user", "admin") else "user",
         is_active=True,
@@ -86,11 +91,41 @@ async def create_user(body: CreateUserBody, admin: User = Depends(require_admin)
     await send_email(
         body.email,
         "Your Chatrix dashboard is ready",
-        welcome_credentials_html(body.full_name, body.email, body.password, get_settings().CLIENT_PANEL_URL),
+        welcome_credentials_html(body.full_name, body.email, password, get_settings().CLIENT_PANEL_URL),
         to_name=body.full_name,
     )
 
-    return {"ok": True, "id": user.id, "email": user.email}
+    # Generated password returned exactly once for the admin to deliver.
+    return {"ok": True, "id": user.id, "email": user.email, "password": password if not body.password else None}
+
+
+class ResetPasswordBody(BaseModel):
+    password: str | None = None  # omitted → auto-generated
+
+
+@router.post("/{user_id}/reset-password")
+async def reset_user_password(user_id: str, body: ResetPasswordBody, admin: User = Depends(require_admin), db=Depends(get_db)):
+    """Regenerate a user's dashboard password (temporary creds for delivery)
+    and resend the credentials email with the new password."""
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    import secrets
+    password = body.password or secrets.token_urlsafe(9)[:12]
+    user.password_hash = hash_password(password)
+    await db.commit()
+    await log_admin_action(admin.id, "user_reset_password", "user", user_id)
+
+    from config import get_settings
+    await send_email(
+        user.email,
+        "Your Chatrix password was reset",
+        welcome_credentials_html(user.full_name or user.email, user.email, password, get_settings().CLIENT_PANEL_URL),
+        to_name=user.full_name,
+    )
+
+    return {"ok": True, "password": password if not body.password else None}
 
 
 @router.post("/{user_id}/impersonate")

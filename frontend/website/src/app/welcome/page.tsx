@@ -31,8 +31,9 @@ export default function WelcomePage() {
   }
 
   function finish() {
+    const c = loadCreds()
     clearCreds()
-    window.location.href = clientPanelLoginUrl()
+    window.location.href = clientPanelLoginUrl(c ?? undefined)
   }
 
   return (
@@ -91,7 +92,7 @@ export default function WelcomePage() {
 
             <p className="text-sm text-soft m-0">
               Client login page:{" "}
-              <a href={clientPanelLoginUrl()} className="ulink">{clientPanelLoginUrl()}</a>
+              <a href={clientPanelLoginUrl(creds)} className="ulink">{clientPanelLoginUrl(creds)}</a>
             </p>
           </div>
         </Reveal>

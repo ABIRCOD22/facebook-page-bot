@@ -31,13 +31,13 @@ import {
 } from "lucide-react"
 import { Reveal } from "@/components/reveal"
 import { SITE } from "@/lib/site"
-import { loadCreds, checkBotConnection, connectFunnelPage, clientPanelLoginUrl, type BotStatus } from "@/lib/api"
+import { loadCreds, checkBotConnection, connectFunnelPage, fetchAvailablePages, clientPanelLoginUrl, type BotStatus, type AvailableResult, type ConnectResult, type ScanSummary } from "@/lib/api"
 
 /* ------------------------------------------------------------------ */
 /* Step content                                                         */
 /* ------------------------------------------------------------------ */
 
-const CALLBACK_URL = "https://facebook-page-bot-rdkt.onrender.com/api/webhook"
+const CALLBACK_URL = "https://Facebook-page-bot-rdkt.onrender.com/api/webhook"
 
 interface Action {
   text: string
@@ -62,7 +62,7 @@ const STEPS: StepDef[] = [
     actions: [
       {
         text: "Open Meta for Developers and click “Create app”.",
-        href: "https://developers.facebook.com/apps",
+        href: "https://developers.Facebook.com/apps",
         external: true,
       },
       { text: "Choose app type “Business”, give it a name (e.g. “My Bot App”) and click “Create”. Development mode is fine." },
@@ -72,28 +72,29 @@ const STEPS: StepDef[] = [
   },
   {
     icon: KeyRound,
-    title: "Get your Page Access Token",
-    intro: "This token lets your bot read and answer messages as your page. Keep the tab open — you’ll paste it in your dashboard.",
+    title: "Get your Access Token",
+    intro:
+      "This token lets your bot read and answer messages as your page. Use a User Access Token and we’ll list all your pages for you to pick — a Page Access Token also works and connects just that one page. Keep the tab open.",
     actions: [
       {
         text: "Open the Graph API Explorer (logged in as your page’s admin).",
-        href: "https://developers.facebook.com/tools/explorer/",
+        href: "https://developers.Facebook.com/tools/explorer/",
         external: true,
       },
       { text: "In the top-right dropdown, switch to the app you just created." },
-      { text: "Click “Get Page Access Token”, tick your page, then copy the token (it starts with EAAB…) and paste it into the token field on the left." },
+      { text: "Add the required permissions and click “Get Access Token”. In the next step we’ll list your pages — you can pick the one the bot should serve." },
     ],
-    tip: "The token expires after a couple of hours. If your bot ever stops replying, generate a fresh token here and reconnect.",
+    tip: "For the full list of your pages choose a User Access Token with the pages_show_list, pages_messaging and pages_manage_metadata permissions. Token expires after a couple of hours — generate a fresh one and reconnect if the bot ever stops.",
   },
   {
     icon: Link2,
-    title: "Connect your page — automatically",
+    title: "Pick your page & connect",
     intro:
-      "Your credentials are already collected from the previous steps — we connect the page to your account for you. When you log in to your dashboard, everything is already there.",
+      "We look up the pages your token can access and you choose which one your bot should serve — we connect it to your account and scan it so the bot knows your business.",
     actions: [
-      { text: "Click “Connect my page automatically” — we do the rest." },
+      { text: "Click “Find my pages”, choose the page, then click “Connect”. We do the rest — including teaching the bot your business." },
     ],
-    tip: "App ID and App Secret are required — without them the bot cannot receive messages.",
+    tip: "Pasted a User Access Token? You’ll see every page you manage. Pasted a Page Access Token? That one page is shown — connect it directly.",
   },
   {
     icon: Settings2,
@@ -103,7 +104,7 @@ const STEPS: StepDef[] = [
       { text: "Copy the green verify token that appeared right after your page connected." },
       {
         text: "In your app: Messenger → Webhooks, click “Edit”.",
-        href: "https://developers.facebook.com/apps",
+        href: "https://developers.Facebook.com/apps",
         external: true,
       },
       { text: "Paste the callback URL and the verify token, then click “Save”. You should see “Webhooks are active for: Page”." },
@@ -157,7 +158,7 @@ function MockRow({ label, children }: { label: string; children: React.ReactNode
 type Phase = "ask" | "creating" | "wizard"
 
 const CREATE_STEPS = [
-  "Open facebook.com/pages/create while logged in as the account that will manage the page.",
+  "Open Facebook.com/pages/create while logged in as the account that will manage the page.",
   "Choose a category that matches your business (e.g. Restaurant, Clinic, Online Store).",
   "Add your business name, photo and cover — your bot answers using this identity.",
   "Publish the page. No posts needed yet — the bot fills the conversation.",
@@ -180,6 +181,12 @@ export default function SetupPage() {
   const [connectErr, setConnectErr] = React.useState<string | null>(null)
   const [pageName, setPageName] = React.useState<string | null>(null)
   const [verifyToken, setVerifyToken] = React.useState<string | null>(null)
+  const [scanInfo, setScanInfo] = React.useState<ScanSummary | null>(null)
+
+  const [detecting, setDetecting] = React.useState(false)
+  const [available, setAvailable] = React.useState<AvailableResult | null>(null)
+  const [detectErr, setDetectErr] = React.useState<string | null>(null)
+  const [selectedPageId, setSelectedPageId] = React.useState<string>("")
 
   React.useEffect(() => {
     if (!creds) router.replace("/register")
@@ -215,18 +222,38 @@ export default function SetupPage() {
     setChecking(false)
   }
 
-  /** Connect the page with the credentials already collected in steps 1–2. */
+  /** Detect the pages this token can access (User token → all pages, page token → one). */
+  async function detectPages() {
+    const c = loadCreds()
+    if (!c || !token.trim()) return
+    setDetecting(true)
+    setDetectErr(null)
+    setAvailable(null)
+    setSelectedPageId("")
+    const res = await fetchAvailablePages(c, token.trim())
+    setDetecting(false)
+    if (res.ok && res.pages && res.pages.length > 0) {
+      setAvailable(res)
+      setSelectedPageId(res.pages[0].page_id)
+    } else {
+      setDetectErr(res.message || "No pages found for this token. Did you grant the page permissions?")
+    }
+  }
+
+  /** Connect the picked page with the credentials already collected in steps 1–2. */
   async function connectPage() {
     const c = loadCreds()
     if (!c || !token.trim() || !appId.trim() || !appSecret.trim()) return
+    const pageId = available?.token_type === "user" ? selectedPageId || undefined : undefined
     setConnecting(true)
     setConnectMsg(null)
     setConnectErr(null)
-    const res = await connectFunnelPage(c, token.trim(), appId.trim(), appSecret.trim())
+    const res = await connectFunnelPage(c, token.trim(), appId.trim(), appSecret.trim(), pageId)
     setConnecting(false)
     if (res.ok) {
       setPageName(res.page_name ?? null)
       setVerifyToken(res.verify_token ?? null)
+      setScanInfo(res.scan ?? null)
       setConnectMsg(`Page “${res.page_name}” is connected to your account — you'll find it ready in your dashboard.`)
     } else {
       setConnectErr(res.message)
@@ -266,25 +293,25 @@ export default function SetupPage() {
     )
   }
 
-  /** Step 2 — collect the page access token live. */
+  /** Step 2 — collect the access token live. */
   function renderTokenCard() {
     return (
       <div className="card-feature">
         <div className="row-sm" style={{ marginBottom: "0.9rem" }}>
           <span className="brand-mark"><KeyRound className="h-5 w-5" /></span>
-          <h3 className="h3" style={{ margin: 0, fontSize: "1.05rem" }}>Your Page Access Token</h3>
+          <h3 className="h3" style={{ margin: 0, fontSize: "1.05rem" }}>Your Access Token</h3>
         </div>
         <p className="lead" style={{ fontSize: "0.9rem", marginBottom: "1rem" }}>
-          This lets your bot read and answer messages as your page. It starts with EAAB…
+          Paste a <b>User Access Token</b> to pick from all your pages, or a <b>Page Access Token</b> (starts with EAAB…) to connect a single page.
         </p>
         <div className="field">
-          <span className="field-label">Page Access Token *</span>
+          <span className="field-label">Access Token *</span>
           <input
             className="field-input"
             type="password"
             value={token}
             onChange={(e) => setToken(e.target.value)}
-            placeholder="EAABxxxxx…"
+            placeholder="EAABxxxxx… or user token"
             style={{ fontFamily: "monospace", fontSize: "0.85rem" }}
           />
         </div>
@@ -314,33 +341,44 @@ export default function SetupPage() {
         return (
           <MockWindow title="Graph API Explorer" badge="Step 2">
             <div className="between" style={{ marginBottom: "0.7rem" }}>
-              <span className="field-label">Your app · Your page</span>
-              <span className="btn btn-primary btn-sm"><KeyRound className="h-4 w-4" /> Get Page Access Token</span>
+              <span className="field-label">Your app · Permissions</span>
+              <span className="btn btn-primary btn-sm"><KeyRound className="h-4 w-4" /> Get Access Token</span>
             </div>
             <div className="tokenfield">EAABxxxxx…CopyMe-SGV sbG8tQ2hhdHJpWC1ib3QtNzI0NTY=</div>
             <p className="field-hint" style={{ marginTop: "0.7rem" }}>
-              Copy the whole token — it starts with <b>EAAB</b>.
+              Add <b>pages_show_list</b>, <b>pages_messaging</b>, <b>pages_manage_metadata</b> then copy the whole token.
             </p>
           </MockWindow>
         )
       case 2:
         return (
-          <MockWindow title="ChatriX · Auto-connect" badge="Step 3">
-            <p className="field-label" style={{ marginBottom: "0.5rem" }}>We connect it for you</p>
+          <MockWindow title="ChatriX · Pick your page" badge="Step 3">
+            <p className="field-label" style={{ marginBottom: "0.5rem" }}>Which page should the bot serve?</p>
             <div className="stack-xs" style={{ marginBottom: "0.7rem" }}>
-              <MockRow label="Page Access Token">
-                <span className="tokenfield">{token ? token.slice(0, 18) + "…" : "—"}</span>
-              </MockRow>
-              <MockRow label="App ID"><span className="field-input" style={{ height: "2.2rem", display: "flex", alignItems: "center", fontSize: "0.85rem" }}>{appId || "—"}</span></MockRow>
-              <MockRow label="App Secret"><span className="field-input" style={{ height: "2.2rem", display: "flex", alignItems: "center", fontSize: "0.85rem" }}>{appSecret ? "••••••••••••" : "—"}</span></MockRow>
+              {available?.pages && available.pages.length > 0 ? (
+                available.pages.map((p) => (
+                  <div className="between" key={p.page_id} style={{ background: "var(--surface-2)", borderRadius: "0.6rem", padding: "0.45rem 0.6rem" }}>
+                    <span className="text-sm">{p.page_name}</span>
+                    <span className="field-hint">{p.page_id}</span>
+                  </div>
+                ))
+              ) : (
+                <>
+                  <MockRow label="Access Token">
+                    <span className="tokenfield">{token ? token.slice(0, 18) + "…" : "—"}</span>
+                  </MockRow>
+                  <MockRow label="App ID"><span className="field-input" style={{ height: "2.2rem", display: "flex", alignItems: "center", fontSize: "0.85rem" }}>{appId || "—"}</span></MockRow>
+                  <MockRow label="App Secret"><span className="field-input" style={{ height: "2.2rem", display: "flex", alignItems: "center", fontSize: "0.85rem" }}>{appSecret ? "••••••••••••" : "—"}</span></MockRow>
+                </>
+              )}
             </div>
             {pageName ? (
               <div className="notice notice-success" style={{ marginTop: "0.3rem" }}>
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span>Connected — page saved to your account.</span>
+                <span>Connected — page saved and scanned.</span>
               </div>
             ) : (
-              <span className="btn btn-primary btn-sm"><Link2 className="h-4 w-4" /> Connect automatically</span>
+              <span className="btn btn-primary btn-sm"><Link2 className="h-4 w-4" /> Find my pages</span>
             )}
             {verifyToken ? (
               <p className="field-hint" style={{ marginTop: "0.6rem", color: "var(--success)", fontWeight: 700 }}>
@@ -432,22 +470,113 @@ export default function SetupPage() {
 
   /* ------------------------------ guidance ----------------------------- */
 
-  /** Step 3 — creds came from steps 1–2; we just connect the page server-side. */
+  /** Shared "the bot auto-scanned your page" summary (wizard + FB flow). */
+  function scanNotice(info: ScanSummary | null) {
+    if (!info) return null
+    return (
+      <div className="notice" style={{ fontSize: "0.85rem" }}>
+        <Sparkles className="h-4 w-4 shrink-0" />
+        <span>
+          {info.auto_voice
+            ? <b>Bot learned your business — it now speaks as your page's moderator. </b>
+            : <b>Bot refreshed its knowledge of your page. </b>}
+          {info.posts_scanned ?? 0} post{(info.posts_scanned ?? 0) === 1 ? "" : "s"} analyzed
+          {typeof info.kb_added === "number" && info.kb_added > 0 ? ` · ${info.kb_added} fact${info.kb_added === 1 ? "" : "s"} saved to its knowledge base` : ""}.
+        </span>
+      </div>
+    )
+  }
+
+  /** Step 3 — find the user's pages, let them pick, then connect + auto-scan. */
   function renderConnectForm() {
+    const pages = available?.pages ?? []
+    const needsPick = available?.token_type === "user"
+    const canConnect = !connecting && !pageName && token.trim() !== "" && appId.trim() !== "" && appSecret.trim() !== ""
+      && (needsPick ? selectedPageId !== "" : pages.length === 1)
+
     return (
       <div className="stack-md">
-        <p className="field-hint" style={{ fontSize: "0.9rem" }}>
-          Using the credentials you pasted in the previous steps — everything needed to connect your page is ready.
-        </p>
+        {!available ? (
+          <>
+            <p className="field-hint" style={{ fontSize: "0.9rem" }}>
+              We peek at your token and list the Facebook pages it can access — you pick which one your bot serves.
+            </p>
+            <button className="btn btn-primary btn-lg" disabled={detecting || !token.trim()} onClick={detectPages} style={{ alignSelf: "flex-start" }}>
+              {detecting ? (
+                <Loader2 className="h-4 w-4 shrink-0" style={{ animation: "spin 0.7s linear infinite" }} />
+              ) : (
+                <MessagesSquare className="h-4 w-4 shrink-0" />
+              )}
+              {detecting ? "Looking up your pages…" : "Find my pages"}
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="field" style={{ marginBottom: "0.6rem" }}>
+              <span className="field-label">
+                {needsPick
+                  ? `We found ${pages.length} page${pages.length > 1 ? "s" : ""} on your account — which one should the bot serve?`
+                  : "This token covers one page:"}
+              </span>
+              <div className="stack-xs">
+                {pages.map((p) => (
+                  <label
+                    key={p.page_id}
+                    className={pageName ? undefined : "card-feature"}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.6rem",
+                      padding: pageName ? "0" : "0.6rem 0.75rem",
+                      cursor: pageName ? "default" : "pointer",
+                    }}
+                  >
+                    {!pageName ? (
+                      <input
+                        type="radio"
+                        name="page-pick"
+                        checked={selectedPageId === p.page_id}
+                        onChange={() => setSelectedPageId(p.page_id)}
+                        style={{ width: "1.1rem", height: "1.1rem", accentColor: "var(--primary)", flexShrink: 0 }}
+                      />
+                    ) : (
+                      <CheckCircle2 className="h-4 w-4 shrink-0" style={{ color: "var(--success)" }} />
+                    )}
+                    <span className="text-sm" style={{ flex: 1 }}>
+                      <b>{p.page_name}</b>
+                      {p.tasks && p.tasks.length > 0 ? <span className="field-hint"> · {p.tasks.join(", ")}</span> : null}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
 
-        <button className="btn btn-primary btn-lg" disabled={connecting || !token.trim() || !appId.trim() || !appSecret.trim()} onClick={connectPage} style={{ alignSelf: "flex-start" }}>
-          {connecting ? (
-            <Loader2 className="h-4 w-4 shrink-0" style={{ animation: "spin 0.7s linear infinite" }} />
-          ) : (
-            <Link2 className="h-4 w-4 shrink-0" />
-          )}
-          {connecting ? "Connecting…" : pageName ? "Connected ✓" : "Connect my page automatically"}
-        </button>
+            <button
+              className="btn btn-primary btn-lg"
+              disabled={!canConnect}
+              onClick={connectPage}
+              style={{ alignSelf: "flex-start" }}
+            >
+              {connecting ? (
+                <Loader2 className="h-4 w-4 shrink-0" style={{ animation: "spin 0.7s linear infinite" }} />
+              ) : (
+                <Link2 className="h-4 w-4 shrink-0" />
+              )}
+              {connecting ? "Connecting…" : pageName ? "Connected ✓" : "Connect this page"}
+            </button>
+
+            <button className="btn btn-ghost btn-sm" disabled={connecting} onClick={() => { setAvailable(null); setSelectedPageId(""); setDetectErr(null) }} style={{ alignSelf: "flex-start", marginTop: "-0.4rem" }}>
+              <RefreshCw className="h-4 w-4" /> Find pages again
+            </button>
+          </>
+        )}
+
+        {detectErr ? (
+          <div className="notice notice-error">
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{detectErr}</span>
+          </div>
+        ) : null}
 
         {connectMsg ? (
           <div className="notice notice-success">
@@ -461,6 +590,8 @@ export default function SetupPage() {
             <span>{connectErr}</span>
           </div>
         ) : null}
+
+        {scanInfo ? scanNotice(scanInfo) : null}
 
         {verifyToken ? (
           <div className="notice" style={{ fontSize: "0.85rem" }}>
@@ -559,7 +690,7 @@ export default function SetupPage() {
                 </li>
               </ul>
               <span>
-                <a className="btn btn-primary btn-sm" href={clientPanelLoginUrl()} target="_blank" rel="noopener noreferrer">
+                <a className="btn btn-primary btn-sm" href={clientPanelLoginUrl(loadCreds() ?? undefined)} target="_blank" rel="noopener noreferrer">
                   Open my dashboard <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               </span>
@@ -575,7 +706,7 @@ export default function SetupPage() {
                 <button className="btn btn-outline btn-sm" onClick={() => setStepIndex(2)}>
                   <ArrowLeft className="h-4 w-4" /> Back to step 3
                 </button>
-                <button className="btn btn-primary btn-sm" onClick={() => (window.location.href = clientPanelLoginUrl())}>
+                <button className="btn btn-primary btn-sm" onClick={() => (window.location.href = clientPanelLoginUrl(loadCreds() ?? undefined))}>
                   Open my dashboard & connect <ExternalLink className="h-3.5 w-3.5" />
                 </button>
               </span>
@@ -745,7 +876,7 @@ export default function SetupPage() {
                 ))}
               </ul>
               <div className="grid grid-cols-2" style={{ gap: "0.75rem" }}>
-                <a className="btn btn-outline btn-lg" href="https://www.facebook.com/pages/create" target="_blank" rel="noopener noreferrer">
+                <a className="btn btn-outline btn-lg" href="https://www.Facebook.com/pages/create" target="_blank" rel="noopener noreferrer">
                   Open pages/create <ExternalLink className="h-4 w-4" />
                 </a>
                 <button className="btn btn-primary btn-lg" onClick={() => setPhase("wizard")}>I’ve created my page</button>

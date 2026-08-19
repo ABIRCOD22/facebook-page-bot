@@ -5,6 +5,44 @@
  */
 import { SITE } from "./site"
 
+/**
+ * Render free tier sleeps after ~15 min idle; the first request wakes it and
+ * can take 30-60s to come back. Retry network-level failures (TypeError only:
+ * DNS, connection, CORS) with a per-attempt timeout that covers the wake
+ * window — HTTP errors (4xx/5xx) pass through untouched.
+ */
+async function fetchRetry(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  retries = 2,
+  timeoutMs = 90_000,
+  delayMs = 2500,
+): Promise<Response> {
+  const prepare = () => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    const signal = init?.signal
+    if (signal) {
+      if (signal.aborted) controller.abort()
+      else signal.addEventListener("abort", () => controller.abort(), { once: true })
+    }
+    return { signal: controller.signal, clear: () => clearTimeout(timer) }
+  }
+  let lastErr: unknown
+  for (let i = 0; i <= retries; i++) {
+    const { signal, clear } = prepare()
+    try {
+      return await fetch(input, { ...init, signal })
+    } catch (err) {
+      lastErr = err
+      if (i < retries) await new Promise((r) => setTimeout(r, delayMs))
+    } finally {
+      clear()
+    }
+  }
+  throw lastErr
+}
+
 export interface RegisterPayload {
   email: string
   password: string
@@ -24,7 +62,7 @@ export interface RegisterResult {
  */
 export async function registerClientUser(payload: RegisterPayload): Promise<RegisterResult> {
   try {
-    const res = await fetch(`${SITE.apiUrl}/api/client/auth/register`, {
+    const res = await fetchRetry(`${SITE.apiUrl}/api/client/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -59,8 +97,17 @@ export async function registerClientUser(payload: RegisterPayload): Promise<Regi
   }
 }
 
-export function clientPanelLoginUrl() {
-  return SITE.clientPanelUrl
+/**
+ * Client panel login URL. When funnel creds are passed, they are appended as
+ * query params so the client login page can prefill email/password.
+ * ponytail: creds ride in the URL (history/referrer-visible). Ceiling is fine
+ * for the funnel's generated one-time creds; upgrade path: short-lived
+ * handoff token consumed by the login page.
+ */
+export function clientPanelLoginUrl(creds?: ClientCreds) {
+  if (!creds) return SITE.clientPanelUrl
+  const q = new URLSearchParams({ email: creds.email, password: creds.password })
+  return `${SITE.clientPanelUrl}/?${q.toString()}`
 }
 
 const CREDS_KEY = "chatrix_creds"
@@ -124,7 +171,7 @@ export interface BotStatus {
  */
 export async function checkBotConnection(creds: ClientCreds): Promise<BotStatus> {
   try {
-    const loginRes = await fetch(`${SITE.apiUrl}/api/client/auth/login`, {
+    const loginRes = await fetchRetry(`${SITE.apiUrl}/api/client/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: creds.email, password: creds.password }),
@@ -140,7 +187,7 @@ export async function checkBotConnection(creds: ClientCreds): Promise<BotStatus>
       }
     }
     const login = await loginRes.json()
-    const pagesRes = await fetch(`${SITE.apiUrl}/api/client/pages`, {
+    const pagesRes = await fetchRetry(`${SITE.apiUrl}/api/client/pages`, {
       headers: { Authorization: `Bearer ${login.access_token}` },
     })
     if (!pagesRes.ok) return { ok: true, connected: false, message: "Could not check your pages. Please try again." }
@@ -178,26 +225,43 @@ export async function checkBotConnection(creds: ClientCreds): Promise<BotStatus>
   }
 }
 
+export interface AvailablePage {
+  page_id: string
+  page_name: string
+  tasks?: string[]
+}
+
+export interface AvailableResult {
+  ok: boolean
+  token_type?: "user" | "page"
+  pages?: AvailablePage[]
+  message?: string
+}
+
+export interface ScanSummary {
+  status?: string
+  posts_scanned?: number
+  kb_added?: number
+  auto_voice?: boolean
+}
+
 export interface ConnectResult {
   ok: boolean
   page_name?: string
   verify_token?: string | null
+  scan?: ScanSummary | null
   message: string
 }
 
 /**
- * Logs in with the funnel credentials and connects the user's Facebook page
- * to their account server-side — no dashboard work needed. The client
- * dashboard will already show the page connected when the user logs in.
+ * Logs in with the funnel credentials and asks the backend what Facebook
+ * pages this token can see. A User Access Token lists every page the
+ * account manages (we then let the user pick); a Page Access Token is
+ * scoped to one page and comes back as a single entry.
  */
-export async function connectFunnelPage(
-  creds: ClientCreds,
-  pageAccessToken: string,
-  fbAppId?: string,
-  fbAppSecret?: string,
-): Promise<ConnectResult> {
+export async function fetchAvailablePages(creds: ClientCreds, accessToken: string): Promise<AvailableResult> {
   try {
-    const loginRes = await fetch(`${SITE.apiUrl}/api/client/auth/login`, {
+    const loginRes = await fetchRetry(`${SITE.apiUrl}/api/client/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: creds.email, password: creds.password }),
@@ -212,7 +276,66 @@ export async function connectFunnelPage(
       }
     }
     const login = await loginRes.json()
-    const res = await fetch(`${SITE.apiUrl}/api/client/pages/connect`, {
+    const res = await fetchRetry(`${SITE.apiUrl}/api/client/pages/available`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${login.access_token}`,
+      },
+      body: JSON.stringify({ access_token: accessToken }),
+    })
+    const text = await res.text()
+    let json: unknown = null
+    try {
+      json = text ? JSON.parse(text) : null
+    } catch {
+      json = null
+    }
+    if (!res.ok) {
+      const detail =
+        json && typeof json === "object" && "detail" in json
+          ? String((json as { detail: unknown }).detail)
+          : null
+      return { ok: false, message: detail || `Could not load pages (${res.status}).` }
+    }
+    const d = json as { token_type: "user" | "page"; pages: AvailablePage[] }
+    return { ok: true, token_type: d.token_type, pages: d.pages ?? [] }
+  } catch {
+    return { ok: false, message: "Could not reach the server. Please try again in a moment." }
+  }
+}
+
+/**
+ * Logs in with the funnel credentials and connects the user's Facebook page
+ * to their account server-side — no dashboard work needed. When the pasted
+ * token is a User Access Token, pageId selects which of the account's pages
+ * to connect (the server resolves that page's own token internally). The
+ * client dashboard will already show the page connected when the user logs in.
+ */
+export async function connectFunnelPage(
+  creds: ClientCreds,
+  pageAccessToken: string,
+  fbAppId?: string,
+  fbAppSecret?: string,
+  pageId?: string,
+): Promise<ConnectResult> {
+  try {
+    const loginRes = await fetchRetry(`${SITE.apiUrl}/api/client/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: creds.email, password: creds.password }),
+    })
+    if (!loginRes.ok) {
+      return {
+        ok: false,
+        message:
+          loginRes.status === 401
+            ? "Could not log in with these credentials. Please re-register from the start."
+            : `Login failed (${loginRes.status}). Please try again.`,
+      }
+    }
+    const login = await loginRes.json()
+    const res = await fetchRetry(`${SITE.apiUrl}/api/client/pages/connect`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -222,6 +345,7 @@ export async function connectFunnelPage(
         page_access_token: pageAccessToken,
         fb_app_id: fbAppId || undefined,
         fb_app_secret: fbAppSecret || undefined,
+        page_id: pageId || undefined,
       }),
     })
     const text = await res.text()
@@ -238,11 +362,12 @@ export async function connectFunnelPage(
           : null
       return { ok: false, message: detail || `Connection failed (${res.status}).` }
     }
-    const d = json as { status: string; page_name: string; verify_token: string | null }
+    const d = json as { status: string; page_name: string; verify_token: string | null; scan?: ScanSummary | null }
     return {
       ok: true,
       page_name: d.page_name,
       verify_token: d.verify_token ?? null,
+      scan: d.scan ?? null,
       message: `Page "${d.page_name}" is now connected to your account.`,
     }
   } catch {

@@ -152,6 +152,12 @@ async def available_pages(
 
     Only ids/names/tasks leave the server; page tokens stay server-side.
     """
+    return await available_pages_core(body)
+
+
+async def available_pages_core(body: AvailableRequest) -> dict:
+    """Shared with admin-led provisioning (admin_pages.py): resolve what a
+    pasted token can see without any db or auth dependency."""
     try:
         listed = await list_manageable_pages(body.access_token)
     except ValueError:
@@ -357,6 +363,12 @@ async def connect_page(
     user: User = Depends(get_current_user),
     db=Depends(get_db),
 ):
+    return await connect_page_core(db, user, body)
+
+
+async def connect_page_core(db, user: User, body: ConnectRequest) -> dict:
+    """Shared with admin-led provisioning (admin_provision.py): pasted-token
+    connect for a given user, including page save, webhook subscribe and scan."""
     # Two token kinds:
     #  - page token (no page_id): /me identifies the one page it covers.
     #  - user token (+ page_id): /me/accounts lists pages; we resolve the
