@@ -9,6 +9,7 @@ from api.dependencies import require_admin
 from database.connection import AsyncSessionFactory, get_db
 from models.database_models import Alert, Subscription, User
 from services.alert_service import refresh as refresh_alerts
+from services.cache import cached_or_compute
 
 router = APIRouter(prefix="/api/admin/overview", tags=["admin-overview"])
 
@@ -48,46 +49,47 @@ async def overview(admin=Depends(require_admin), db=Depends(get_db)):
     now = datetime.utcnow()
     last_30 = now - timedelta(days=30)
 
-    row = (await db.execute(_COUNTERS_SQL, {"last_30": last_30})).mappings().one()
+    async def _compute():
+        row = (await db.execute(_COUNTERS_SQL, {"last_30": last_30})).mappings().one()
 
-    # Remaining reads are independent — run them concurrently on separate
-    # sessions so remote-DB RTTs overlap instead of stacking.
-    async def _with_new_session(fn):
-        async with AsyncSessionFactory() as s:
-            return await fn(s)
+        # Remaining reads are independent — run them concurrently on separate
+        # sessions so remote-DB RTTs overlap instead of stacking.
+        async def _with_new_session(fn):
+            async with AsyncSessionFactory() as s:
+                return await fn(s)
 
-    async def _read_subs(s):
-        return (await s.execute(select(Subscription))).scalars().all()
+        async def _read_subs(s):
+            return (await s.execute(select(Subscription))).scalars().all()
 
-    async def _read_recent_users(s):
-        return (await s.execute(select(User).order_by(User.created_at.desc()).limit(5))).scalars().all()
+        async def _read_recent_users(s):
+            return (await s.execute(select(User).order_by(User.created_at.desc()).limit(5))).scalars().all()
 
-    async def _read_recent_alerts(s):
-        return (await s.execute(select(Alert).order_by(Alert.created_at.desc()).limit(5))).scalars().all()
+        async def _read_recent_alerts(s):
+            return (await s.execute(select(Alert).order_by(Alert.created_at.desc()).limit(5))).scalars().all()
 
-    subs, recent_users, recent_alerts = await asyncio.gather(
-        _with_new_session(_read_subs),
-        _with_new_session(_read_recent_users),
-        _with_new_session(_read_recent_alerts),
-    )
+        subs, recent_users, recent_alerts = await asyncio.gather(
+            _with_new_session(_read_subs),
+            _with_new_session(_read_recent_users),
+            _with_new_session(_read_recent_alerts),
+        )
 
-    total_users = row["total_users"]
-    active_users = row["active_users"]
-    new_signups = row["new_signups"]
-    total_pages = row["total_pages"]
-    active_bots = row["active_bots"]
-    total_products = row["total_products"]
-    total_conversations = row["total_conversations"]
-    open_alerts = row["open_alerts"]
+        total_users = row["total_users"]
+        active_users = row["active_users"]
+        new_signups = row["new_signups"]
+        total_pages = row["total_pages"]
+        active_bots = row["active_bots"]
+        total_products = row["total_products"]
+        total_conversations = row["total_conversations"]
+        open_alerts = row["open_alerts"]
 
-    active_subs = [s for s in subs if s.status == "active"]
-    suspended_subs = [s for s in subs if s.status == "suspended"]
-    mrr = sum(TIER_PRICE.get(s.tier, 0) for s in active_subs)
+        active_subs = [s for s in subs if s.status == "active"]
+        suspended_subs = [s for s in subs if s.status == "suspended"]
+        mrr = sum(TIER_PRICE.get(s.tier, 0) for s in active_subs)
 
-    messages_used = sum((s.messages_used or 0) for s in subs)
-    messages_limit = sum((s.max_messages_per_month or 0) for s in subs)
+        messages_used = sum((s.messages_used or 0) for s in subs)
+        messages_limit = sum((s.max_messages_per_month or 0) for s in subs)
 
-    return {
+        return {
         "total_users": total_users,
         "active_users": active_users,
         "new_signups_30d": new_signups,
@@ -124,4 +126,7 @@ async def overview(admin=Depends(require_admin), db=Depends(get_db)):
             }
             for a in recent_alerts
         ],
-    }
+        }
+
+    # 30s TTL — dashboard counters don't need sub-minute freshness.
+    return await cached_or_compute("admin:overview", 30, _compute)
