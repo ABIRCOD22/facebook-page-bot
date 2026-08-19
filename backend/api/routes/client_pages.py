@@ -8,6 +8,7 @@ best-effort subscribe the webhook, and can run a business scan.
 
 import json
 import secrets
+import time
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -29,6 +30,24 @@ from services.page_connector import (
 
 router = APIRouter(prefix="/api/client/pages", tags=["client-pages"])
 settings = get_settings()
+
+FB_SCOPES = "pages_show_list,pages_messaging,pages_manage_metadata"
+FB_STAGING_TTL = 600  # 10 minutes to finish picking a page after FB login
+# ponytail: single-process in-memory OAuth staging (user token exchanged once,
+# only per-page tokens cached briefly). Ceiling: Render free = one instance,
+# so the dict is correct today; the Redis client in database.connection is the
+# upgrade path if the backend ever runs multiple instances.
+_fb_staging: dict[str, dict] = {}
+
+
+def build_oauth_url(app_id: str, redirect_uri: str, state: str, version: str = None) -> str:
+    """Facebook Login for Business URL. Pure + deterministic (assertable)."""
+    version = version or settings.GRAPH_API_VERSION
+    return (
+        f"https://www.facebook.com/{version}/dialog/oauth"
+        f"?client_id={app_id}&redirect_uri={redirect_uri}&state={state}"
+        f"&scope={FB_SCOPES}&response_type=code"
+    )
 
 
 class ConnectRequest(BaseModel):
@@ -162,6 +181,168 @@ async def available_pages(
     return {
         "token_type": "page",
         "pages": [{"page_id": info["page_id"], "page_name": info["page_name"], "tasks": []}],
+    }
+
+
+@router.post("/fb/authorize")
+async def fb_login_url(
+    user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Kick off Facebook Login with ChatriX's own app — no user app required.
+
+    Returns the Facebook OAuth dialog URL + a state token bound to this
+    account. The user grants access in Facebook's own screen; we never see
+    their Facebook password. After the redirect we exchange the code
+    server-side (our app secret never leaves the backend).
+    """
+    state = secrets.token_urlsafe(16)
+    _fb_staging[user.id] = {"state": state, "expires": time.time() + FB_STAGING_TTL}
+    return {
+        "auth_url": build_oauth_url(settings.FB_APP_ID, FB_REDIRECT_URI, state),
+        "state": state,
+    }
+
+
+FB_REDIRECT_URI = "https://fb-autoreply-website.netlify.app/setup"
+
+
+class FbCompleteRequest(BaseModel):
+    code: str
+    redirect_uri: str
+    state: str
+
+
+class FbSelectRequest(BaseModel):
+    page_id: str
+
+
+@router.post("/fb/complete")
+async def fb_complete(
+    body: FbCompleteRequest,
+    user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Exchange the OAuth code from Facebook Login for a list of pages.
+
+    Code → short-lived user token → long-lived (~60d) → /me/accounts.
+    The long-lived user token is used once and discarded; only the (already
+    non-expiring) per-page tokens are kept, in a short-lived staging entry.
+    """
+    staged = _fb_staging.get(user.id)
+    if (
+        not staged
+        or staged.get("state") != body.state
+        or staged.get("expires", 0) < time.time()
+    ):
+        raise HTTPException(status_code=400, detail="This Facebook sign-in link is stale — start again.")
+    try:
+        short = await exchange_code(
+            settings.FB_APP_ID, settings.FB_APP_SECRET, body.code, body.redirect_uri
+        )
+        long = await make_long_lived_user_token(settings.FB_APP_ID, settings.FB_APP_SECRET, short)
+        pages = await list_manageable_pages(long)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Facebook sign-in failed: {e}")
+    if not pages:
+        raise HTTPException(
+            status_code=400,
+            detail="No pages found for this Facebook account. You must be admin/analyst on at least one page.",
+        )
+
+    _fb_staging[user.id] = {
+        "state": staged["state"],
+        "pages": pages,
+        "expires": time.time() + FB_STAGING_TTL,
+    }
+    return {
+        "token_type": "user",
+        "pages": [
+            {
+                "page_id": p.get("id"),
+                "page_name": p.get("name") or f"Page {p.get('id')}",
+                "tasks": p.get("tasks", []),
+            }
+            for p in pages
+        ],
+    }
+
+
+@router.post("/fb/select")
+async def fb_select(
+    body: FbSelectRequest,
+    user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Save the chosen page, subscribe our shared app, auto-scan. One shot.
+
+    No per-user app, no verify token: our app's webhook is configured once
+    globally (callback URL + FB_VERIFY_TOKEN) and each page just subscribes
+    via subscribe_app + our app's global secret (webhook.py falls back to
+    settings.FB_APP_SECRET for fb_app_secret=None pages).
+    """
+    staged = _fb_staging.get(user.id)
+    if not staged or staged.get("expires", 0) < time.time():
+        raise HTTPException(status_code=400, detail="Facebook sign-in expired — start again.")
+    pages = staged.get("pages", [])
+    chosen = _pick_chosen_page(pages, body.page_id)
+    if not chosen:
+        raise HTTPException(status_code=404, detail="Selected page not found — start the Facebook sign-in again.")
+    page_token = chosen.get("access_token")
+    if not page_token:
+        raise HTTPException(
+            status_code=400,
+            detail="Meta did not return a page token. Re-check the ChatriX app's permissions.",
+        )
+
+    await _enforce_page_limit(db, user, connected_page_id=chosen["id"])
+
+    page = await _save_tenant_page(
+        db,
+        user,
+        chosen["id"],
+        chosen.get("name") or f"Page {chosen['id']}",
+        page_token,
+        settings.FB_APP_ID,
+        None,  # fb_app_secret=None → webhook signature uses our global secret
+        None,
+    )
+
+    # Ensure our shared app's webhook subscription points at us (idempotent —
+    # same callback URL + verify token every time). Non-fatal if the app
+    # dashboard hasn't been configured with the Messenger product yet.
+    try:
+        await configure_app_webhook(
+            settings.FB_APP_ID,
+            settings.FB_APP_SECRET,
+            f"{settings.WEBHOOK_PUBLIC_URL}/api/webhook",
+            settings.FB_VERIFY_TOKEN,
+        )
+    except Exception as e:  # noqa
+        import logging
+        logging.getLogger(__name__).warning("Shared-app webhook configure failed: %s", e)
+
+    try:
+        await subscribe_app(page.page_id, page.page_access_token)
+    except Exception as e:  # noqa
+        import logging
+        logging.getLogger(__name__).warning("Webhook subscribe failed for page %s: %s", page.page_id, e)
+
+    scan = None
+    try:
+        scan = await scan_page(user.id, page)
+    except Exception as e:  # noqa
+        import logging
+        logging.getLogger(__name__).warning("Auto-scan failed for page %s: %s", page.page_id, e)
+
+    _fb_staging.pop(user.id, None)
+    return {
+        "status": "connected",
+        "id": page.id,
+        "page_id": page.page_id,
+        "page_name": page.page_name,
+        "verify_token": None,  # shared app: webhook verify is configured globally
+        "scan": scan,
     }
 
 

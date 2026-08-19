@@ -4,7 +4,7 @@ Fails if either new piece of connect-flow logic breaks. No framework.
 Run: .venv\Scripts\python.exe backend\scripts\check_page_pick.py
 """
 
-from api.routes.client_pages import _pick_chosen_page
+from api.routes.client_pages import FB_SCOPES, _pick_chosen_page, build_oauth_url
 from services.business_scanner import build_moderator_prompt
 
 pages = [
@@ -26,4 +26,12 @@ prompt_blank = build_moderator_prompt({})
 assert "this page" in prompt_blank
 assert "About the business" not in prompt_blank
 
-print("OK: page-pick resolution + moderator prompt")
+url = build_oauth_url("123", "https://site.app/setup", "st8", version="v26.0")
+assert url == (
+    "https://www.facebook.com/v26.0/dialog/oauth"
+    "?client_id=123&redirect_uri=https://site.app/setup&state=st8"
+    f"&scope={FB_SCOPES}&response_type=code"
+)
+assert "client_secret" not in url  # never leak the secret into a client URL
+
+print("OK: page-pick resolution + moderator prompt + FB OAuth URL")
