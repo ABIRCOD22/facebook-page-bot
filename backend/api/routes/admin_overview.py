@@ -1,7 +1,8 @@
 """Master overview dashboard aggregates."""
 
+import asyncio
 from datetime import datetime, timedelta
-from sqlalchemy import func, select
+from sqlalchemy import select, text
 from fastapi import APIRouter, Depends
 
 from api.dependencies import require_admin
@@ -26,28 +27,43 @@ TIER_PRICE = {
     "enterprise": 4000,
 }
 
+# All dashboard counters in ONE round trip — Supabase is a remote DB, each
+# sequential query costs ~300ms of network RTT.
+_COUNTERS_SQL = text(
+    """
+    SELECT
+      (SELECT count(*) FROM users) AS total_users,
+      (SELECT count(*) FROM users WHERE is_active) AS active_users,
+      (SELECT count(*) FROM users WHERE created_at >= :last_30) AS new_signups,
+      (SELECT count(*) FROM facebook_pages) AS total_pages,
+      (SELECT count(*) FROM facebook_pages WHERE is_active) AS active_bots,
+      (SELECT count(*) FROM products) AS total_products,
+      (SELECT count(*) FROM conversations) AS total_conversations,
+      (SELECT count(*) FROM alerts WHERE is_resolved IS NOT TRUE) AS open_alerts
+    """
+)
+
 
 @router.get("")
 async def overview(admin=Depends(require_admin), db=Depends(get_db)):
-    await refresh_alerts()
+    # ponytail: alert scan runs in the background — alerts simply appear one
+    # dashboard load later instead of blocking every request with a full
+    # users × pages scan. If alert freshness matters on first paint, promote
+    # this to a periodic background task instead.
+    asyncio.create_task(refresh_alerts())
 
     now = datetime.utcnow()
     last_30 = now - timedelta(days=30)
 
-    total_users = (await db.execute(select(func.count(User.id)))).scalar() or 0
-    active_users = (
-        await db.execute(select(func.count(User.id)).where(User.is_active == True))  # noqa: E712
-    ).scalar() or 0
-    new_signups = (
-        await db.execute(select(func.count(User.id)).where(User.created_at >= last_30))
-    ).scalar() or 0
-
-    total_pages = (await db.execute(select(func.count(FacebookPage.id)))).scalar() or 0
-    active_bots = (
-        await db.execute(
-            select(func.count(FacebookPage.id)).where(FacebookPage.is_active == True)  # noqa: E712
-        )
-    ).scalar() or 0
+    row = (await db.execute(_COUNTERS_SQL, {"last_30": last_30})).mappings().one()
+    total_users = row["total_users"]
+    active_users = row["active_users"]
+    new_signups = row["new_signups"]
+    total_pages = row["total_pages"]
+    active_bots = row["active_bots"]
+    total_products = row["total_products"]
+    total_conversations = row["total_conversations"]
+    open_alerts = row["open_alerts"]
 
     subs = (await db.execute(select(Subscription))).scalars().all()
     active_subs = [s for s in subs if s.status == "active"]
@@ -56,12 +72,6 @@ async def overview(admin=Depends(require_admin), db=Depends(get_db)):
 
     messages_used = sum((s.messages_used or 0) for s in subs)
     messages_limit = sum((s.max_messages_per_month or 0) for s in subs)
-    total_products = (await db.execute(select(func.count(Product.id)))).scalar() or 0
-    total_conversations = (await db.execute(select(func.count(Conversation.id)))).scalar() or 0
-
-    open_alerts = (
-        await db.execute(select(func.count(Alert.id)).where(Alert.is_resolved == False))  # noqa: E712
-    ).scalar() or 0
 
     recent_users = (
         await db.execute(select(User).order_by(User.created_at.desc()).limit(5))
