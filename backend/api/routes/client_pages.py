@@ -118,6 +118,15 @@ async def connect_page(
         None,
     )
 
+    # Per-page verify token for the user's own app webhook config:
+    # Meta will GET our /api/webhook with this token when they save
+    # the callback URL in App Dashboard. Only generated when the user
+    # brings their own app (their app_secret signs the events).
+    if body.fb_app_id and not page.verify_token:
+        page.verify_token = secrets.token_urlsafe(24)
+        await db.commit()
+        await db.refresh(page)
+
     # Best-effort: subscribe the app to receive webhook events. Non-fatal.
     try:
         await subscribe_app(page.page_id, page.page_access_token)
@@ -125,7 +134,13 @@ async def connect_page(
         import logging
         logging.getLogger(__name__).warning("Webhook subscribe failed for page %s: %s", page.page_id, e)
 
-    return {"status": "connected", "id": page.id, "page_id": page.page_id, "page_name": page.page_name}
+    return {
+        "status": "connected",
+        "id": page.id,
+        "page_id": page.page_id,
+        "page_name": page.page_name,
+        "verify_token": page.verify_token or None,
+    }
 
 
 @router.post("/connect-byo")

@@ -170,7 +170,7 @@ class ApiClient {
 
   // ---- Facebook pages (BYOA) ----
   async connectPage(pageAccessToken: string, fbAppId?: string, fbAppSecret?: string) {
-    return this.request<{ status: string; id: string; page_id: string; page_name: string }>("/api/client/pages/connect", {
+    return this.request<{ status: string; id: string; page_id: string; page_name: string; verify_token: string | null }>("/api/client/pages/connect", {
       method: "POST",
       body: JSON.stringify({
         page_access_token: pageAccessToken,

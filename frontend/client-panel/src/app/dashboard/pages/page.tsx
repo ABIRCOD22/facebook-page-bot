@@ -43,6 +43,7 @@ export default function PagesPage() {
   const [scanningId, setScanningId] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
+  const [verifyToken, setVerifyToken] = useState<string | null>(null)
 
   async function load() {
     try {
@@ -60,14 +61,16 @@ export default function PagesPage() {
   async function handleConnect() {
     setError("")
     setSuccess("")
+    setVerifyToken(null)
     if (!token.trim()) {
       setError("Paste your Page Access Token to connect.")
       return
     }
     setLoading(true)
     try {
-      await api.connectPage(token.trim(), appId.trim() || undefined, appSecret.trim() || undefined)
+      const res = await api.connectPage(token.trim(), appId.trim() || undefined, appSecret.trim() || undefined)
       setSuccess("Page connected — your bot is now live on that page.")
+      if (res.verify_token) setVerifyToken(res.verify_token)
       setToken("")
       setAppId("")
       setAppSecret("")
@@ -171,6 +174,25 @@ export default function PagesPage() {
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
               Connect Facebook Page
             </Button>
+            {verifyToken && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+                <p className="text-xs text-emerald-800">
+                  Your page's webhook verify token — paste this into your Meta app's webhook configuration:
+                </p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 text-[11px] break-all bg-white border rounded px-2 py-1 select-all">{verifyToken}</code>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      navigator.clipboard.writeText(verifyToken)
+                    }}
+                  >
+                    Copy
+                  </Button>
+                </div>
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
               The token is stored per page and used only to read and reply to messages.
             </p>
