@@ -66,7 +66,7 @@ const STEPS: StepDef[] = [
         external: true,
       },
       { text: "Choose app type “Business”, give it a name (e.g. “My Bot App”) and click “Create”. Development mode is fine." },
-      { text: "Open “Settings → Basic” and copy the App ID and App Secret — you need them in step 3." },
+      { text: "Open “Settings → Basic” and copy the App ID and App Secret — then paste them into the App credentials form on the left." },
     ],
     tip: "A Meta app needs a Facebook account. Log in as the account that manages your page.",
   },
@@ -81,7 +81,7 @@ const STEPS: StepDef[] = [
         external: true,
       },
       { text: "In the top-right dropdown, switch to the app you just created." },
-      { text: "Click “Get Page Access Token”, tick your page, then copy the token (it starts with EAAB…)." },
+      { text: "Click “Get Page Access Token”, tick your page, then copy the token (it starts with EAAB…) and paste it into the token field on the left." },
     ],
     tip: "The token expires after a couple of hours. If your bot ever stops replying, generate a fresh token here and reconnect.",
   },
@@ -89,9 +89,8 @@ const STEPS: StepDef[] = [
     icon: Link2,
     title: "Connect your page — automatically",
     intro:
-      "Paste the token and app credentials below. We connect the page to your account for you — when you log in to your dashboard, everything is already there.",
+      "Your credentials are already collected from the previous steps — we connect the page to your account for you. When you log in to your dashboard, everything is already there.",
     actions: [
-      { text: "Paste your Page Access Token, App ID and App Secret below." },
       { text: "Click “Connect my page automatically” — we do the rest." },
     ],
     tip: "App ID and App Secret are required — without them the bot cannot receive messages.",
@@ -189,7 +188,15 @@ export default function SetupPage() {
   if (!creds) return null
 
   const step = STEPS[stepIndex]
-  const done = stepIndex === 2 ? !!pageName : (ticked[stepIndex] ?? []).filter(Boolean).length >= step.actions.length
+  const allTicked = (ticked[stepIndex] ?? []).filter(Boolean).length >= step.actions.length
+  const done =
+    stepIndex === 0
+      ? appId.trim() !== "" && appSecret.trim() !== "" && allTicked
+      : stepIndex === 1
+        ? token.trim() !== "" && allTicked
+        : stepIndex === 2
+          ? !!pageName
+          : allTicked
 
   function toggle(i: number) {
     setTicked((prev) => {
@@ -208,14 +215,14 @@ export default function SetupPage() {
     setChecking(false)
   }
 
-  /** Step 3 — paste creds, we connect the page to their account server-side. */
+  /** Connect the page with the credentials already collected in steps 1–2. */
   async function connectPage() {
     const c = loadCreds()
-    if (!c || !token.trim()) return
+    if (!c || !token.trim() || !appId.trim() || !appSecret.trim()) return
     setConnecting(true)
     setConnectMsg(null)
     setConnectErr(null)
-    const res = await connectFunnelPage(c, token.trim(), appId.trim() || undefined, appSecret.trim() || undefined)
+    const res = await connectFunnelPage(c, token.trim(), appId.trim(), appSecret.trim())
     setConnecting(false)
     if (res.ok) {
       setPageName(res.page_name ?? null)
@@ -227,6 +234,63 @@ export default function SetupPage() {
   }
 
   /* ------------------------------ visuals ------------------------------ */
+
+  /** Step 1 — collect the Meta app credentials live, right where they are asked for. */
+  function renderAppCredsCard() {
+    return (
+      <div className="card-feature">
+        <div className="row-sm" style={{ marginBottom: "0.9rem" }}>
+          <span className="brand-mark"><KeyRound className="h-5 w-5" /></span>
+          <h3 className="h3" style={{ margin: 0, fontSize: "1.05rem" }}>Your App credentials</h3>
+        </div>
+        <p className="lead" style={{ fontSize: "0.9rem", marginBottom: "1rem" }}>
+          We need these to receive messages for your page. Found them in Meta → Settings → Basic.
+        </p>
+        <div className="stack-xs">
+          <div className="field">
+            <span className="field-label">App ID *</span>
+            <input className="field-input" value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="1234567890" />
+          </div>
+          <div className="field">
+            <span className="field-label">App Secret *</span>
+            <input
+              className="field-input"
+              type="password"
+              value={appSecret}
+              onChange={(e) => setAppSecret(e.target.value)}
+              placeholder="••••••••••••••••"
+            />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  /** Step 2 — collect the page access token live. */
+  function renderTokenCard() {
+    return (
+      <div className="card-feature">
+        <div className="row-sm" style={{ marginBottom: "0.9rem" }}>
+          <span className="brand-mark"><KeyRound className="h-5 w-5" /></span>
+          <h3 className="h3" style={{ margin: 0, fontSize: "1.05rem" }}>Your Page Access Token</h3>
+        </div>
+        <p className="lead" style={{ fontSize: "0.9rem", marginBottom: "1rem" }}>
+          This lets your bot read and answer messages as your page. It starts with EAAB…
+        </p>
+        <div className="field">
+          <span className="field-label">Page Access Token *</span>
+          <input
+            className="field-input"
+            type="password"
+            value={token}
+            onChange={(e) => setToken(e.target.value)}
+            placeholder="EAABxxxxx…"
+            style={{ fontFamily: "monospace", fontSize: "0.85rem" }}
+          />
+        </div>
+      </div>
+    )
+  }
 
   function renderVisual() {
     switch (stepIndex) {
@@ -264,9 +328,11 @@ export default function SetupPage() {
           <MockWindow title="ChatriX · Auto-connect" badge="Step 3">
             <p className="field-label" style={{ marginBottom: "0.5rem" }}>We connect it for you</p>
             <div className="stack-xs" style={{ marginBottom: "0.7rem" }}>
-              <MockRow label="Page Access Token *"><span className="tokenfield">EAABxxxxx…your-copied-token</span></MockRow>
-              <MockRow label="App ID *"><span className="field-input" style={{ height: "2.2rem", display: "flex", alignItems: "center", fontSize: "0.85rem" }}>1234567890</span></MockRow>
-              <MockRow label="App Secret *"><span className="field-input" style={{ height: "2.2rem", display: "flex", alignItems: "center", fontSize: "0.85rem" }}>••••••••••••••••</span></MockRow>
+              <MockRow label="Page Access Token">
+                <span className="tokenfield">{token ? token.slice(0, 18) + "…" : "—"}</span>
+              </MockRow>
+              <MockRow label="App ID"><span className="field-input" style={{ height: "2.2rem", display: "flex", alignItems: "center", fontSize: "0.85rem" }}>{appId || "—"}</span></MockRow>
+              <MockRow label="App Secret"><span className="field-input" style={{ height: "2.2rem", display: "flex", alignItems: "center", fontSize: "0.85rem" }}>{appSecret ? "••••••••••••" : "—"}</span></MockRow>
             </div>
             {pageName ? (
               <div className="notice notice-success" style={{ marginTop: "0.3rem" }}>
@@ -366,38 +432,15 @@ export default function SetupPage() {
 
   /* ------------------------------ guidance ----------------------------- */
 
+  /** Step 3 — creds came from steps 1–2; we just connect the page server-side. */
   function renderConnectForm() {
     return (
       <div className="stack-md">
-        <div className="stack-xs">
-          <div className="field">
-            <span className="field-label">Page Access Token *</span>
-            <input
-              className="field-input"
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="EAABxxxxx…"
-              style={{ fontFamily: "monospace", fontSize: "0.85rem" }}
-            />
-          </div>
-          <div className="field">
-            <span className="field-label">App ID *</span>
-            <input className="field-input" value={appId} onChange={(e) => setAppId(e.target.value)} placeholder="1234567890" />
-          </div>
-          <div className="field">
-            <span className="field-label">App Secret *</span>
-            <input
-              className="field-input"
-              type="password"
-              value={appSecret}
-              onChange={(e) => setAppSecret(e.target.value)}
-              placeholder="••••••••••••••••"
-            />
-          </div>
-        </div>
+        <p className="field-hint" style={{ fontSize: "0.9rem" }}>
+          Using the credentials you pasted in the previous steps — everything needed to connect your page is ready.
+        </p>
 
-        <button className="btn btn-primary btn-lg" disabled={connecting || !token.trim()} onClick={connectPage} style={{ alignSelf: "flex-start" }}>
+        <button className="btn btn-primary btn-lg" disabled={connecting || !token.trim() || !appId.trim() || !appSecret.trim()} onClick={connectPage} style={{ alignSelf: "flex-start" }}>
           {connecting ? (
             <Loader2 className="h-4 w-4 shrink-0" style={{ animation: "spin 0.7s linear infinite" }} />
           ) : (
@@ -595,7 +638,9 @@ export default function SetupPage() {
         {renderStepper()}
 
         <div className="grid md:grid-cols-2" style={{ gap: "1.75rem", alignItems: "start" }}>
-          <div className="reveal in-view">{renderVisual()}</div>
+          <div className="reveal in-view">
+            {stepIndex === 0 ? renderAppCredsCard() : stepIndex === 1 ? renderTokenCard() : renderVisual()}
+          </div>
 
           <div className="card-feature">
             <div className="row-sm" style={{ marginBottom: "0.5rem" }}>
