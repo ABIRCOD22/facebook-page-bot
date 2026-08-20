@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { MessageSquare, Send, Search, Loader2 } from "lucide-react"
+import { MessageSquare, Send, Search, Loader2, Undo2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -11,6 +11,7 @@ interface Conv {
   id: string
   customer_name: string
   status: string
+  taken_over_at: string | null
   message_count: number
   last_message_at: string
   preview: string
@@ -29,9 +30,11 @@ export default function ConversationsPage() {
   const [convs, setConvs] = useState<Conv[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [messages, setMessages] = useState<Msg[]>([])
+  const [convInfo, setConvInfo] = useState<{ status: string; taken_over_at: string | null } | null>(null)
   const [draft, setDraft] = useState("")
   const [loading, setLoading] = useState(false)
   const [sending, setSending] = useState(false)
+  const [resuming, setResuming] = useState(false)
   const [error, setError] = useState("")
 
   async function loadConvs() {
@@ -60,7 +63,10 @@ export default function ConversationsPage() {
       setLoading(true)
       try {
         const res = await api.getConversation(selected)
-        if (active) setMessages(res.messages)
+        if (active) {
+          setMessages(res.messages)
+          setConvInfo({ status: res.status, taken_over_at: res.taken_over_at })
+        }
       } catch {
         /* ignore */
       } finally {
@@ -81,12 +87,32 @@ export default function ConversationsPage() {
       setDraft("")
       const res = await api.getConversation(selected)
       setMessages(res.messages)
+      setConvInfo({ status: res.status, taken_over_at: res.taken_over_at })
     } catch (e) {
       setError((e as Error).message)
     } finally {
       setSending(false)
     }
   }
+
+  async function handleResume(id: string | null) {
+    if (!selected || !id || resuming) return
+    setResuming(true)
+    setError("")
+    try {
+      await api.resumeConversation(id)
+      const res = await api.getConversation(id)
+      setMessages(res.messages)
+      setConvInfo({ status: res.status, taken_over_at: res.taken_over_at })
+      await loadConvs()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setResuming(false)
+    }
+  }
+
+  const handedOver = convInfo?.status === "handed_over" && convInfo.taken_over_at
 
   return (
     <div className="space-y-6">
@@ -123,9 +149,15 @@ export default function ConversationsPage() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <p className="font-medium truncate">{c.customer_name}</p>
-                      <span className="text-[10px] text-muted-foreground shrink-0">
-                        {new Date(c.last_message_at).toLocaleDateString()}
-                      </span>
+                      {c.status === "handed_over" && c.taken_over_at ? (
+                        <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 shrink-0">
+                          You
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {new Date(c.last_message_at).toLocaleDateString()}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-muted-foreground truncate">
                       {c.preview_sender === "bot" ? "🤖 " : c.preview_sender === "human_agent" ? "👤 " : ""}
@@ -178,6 +210,22 @@ export default function ConversationsPage() {
               </div>
               <div className="p-4 border-t">
                 {error && <p className="text-xs text-destructive mb-2">{error}</p>}
+                {handedOver && (
+                  <div className="flex items-center justify-between gap-3 mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+                    <p className="text-xs text-amber-800">
+                      You have taken over this customer — the bot stays silent here and keeps serving the others.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleResume(selected)}
+                      disabled={resuming}
+                    >
+                      {resuming ? <Loader2 className="w-3 h-3 animate-spin" /> : <Undo2 className="w-3 h-3" />}
+                      Get back to bot
+                    </Button>
+                  </div>
+                )}
                 <div className="relative">
                   <Input
                     placeholder="Message the customer…"

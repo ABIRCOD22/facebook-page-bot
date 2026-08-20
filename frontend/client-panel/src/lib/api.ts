@@ -221,6 +221,7 @@ class ApiClient {
         page_id: string
         page_name: string
         bot_name: string
+        bot_enabled: boolean
         is_active: boolean
         connected_at: string
         scan_status: string
@@ -238,6 +239,13 @@ class ApiClient {
     }>("/api/client/pages")
   }
 
+  async setBotEnabled(id: string, botEnabled: boolean) {
+    return this.request<{ status: string; bot_enabled: boolean }>(`/api/client/pages/${id}/bot`, {
+      method: "PUT",
+      body: JSON.stringify({ bot_enabled: botEnabled }),
+    })
+  }
+
   async scanPage(id: string) {
     return this.request<{ status: string; profile: Record<string, unknown>; kb_added: number; posts_scanned: number; website_scanned: boolean }>(`/api/client/pages/${id}/scan`, { method: "POST" })
   }
@@ -248,17 +256,29 @@ class ApiClient {
 
   // ---- Conversations inbox ----
   async listConversations() {
-    return this.request<{ conversations: Array<{ id: string; customer_name: string; status: string; message_count: number; last_message_at: string; preview: string; preview_sender: string | null }> }>("/api/client/conversations")
+    return this.request<{ conversations: Array<{ id: string; customer_name: string; status: string; taken_over_at: string | null; message_count: number; last_message_at: string; preview: string; preview_sender: string | null }> }>("/api/client/conversations")
   }
 
   async getConversation(id: string) {
-    return this.request<{ id: string; customer_name: string; status: string; messages: Array<{ id: string; sender_type: string; content: string; message_type: string; timestamp: string }> }>(`/api/client/conversations/${id}`)
+    return this.request<{ id: string; customer_name: string; status: string; taken_over_at: string | null; messages: Array<{ id: string; sender_type: string; content: string; message_type: string; timestamp: string }> }>(`/api/client/conversations/${id}`)
   }
 
   async sendConversationMessage(id: string, content: string) {
     return this.request<{ status: string }>(`/api/client/conversations/${id}/send`, {
       method: "POST",
       body: JSON.stringify({ content }),
+    })
+  }
+
+  async resumeConversation(id: string) {
+    return this.request<{ status: string }>(`/api/client/conversations/${id}/resume`, {
+      method: "POST",
+    })
+  }
+
+  async takeoverAllConversations() {
+    return this.request<{ taken_over: number }>("/api/client/conversations/takeover-all", {
+      method: "POST",
     })
   }
 

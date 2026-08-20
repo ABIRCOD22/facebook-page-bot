@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { MessagesSquare, Link2, Trash2, Loader2, CheckCircle2, ScanSearch, ShieldCheck } from "lucide-react"
+import { MessagesSquare, Link2, Trash2, Loader2, CheckCircle2, ScanSearch, ShieldCheck, Power } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -23,6 +23,7 @@ interface Page {
   page_id: string
   page_name: string
   bot_name: string
+  bot_enabled: boolean
   is_active: boolean
   connected_at: string
   scan_status: string
@@ -41,6 +42,7 @@ export default function PagesPage() {
   const [byoRedirect, setByoRedirect] = useState("https://fb-autoreply-client.netlify.app/fb-connect-callback")
   const [loading, setLoading] = useState(false)
   const [scanningId, setScanningId] = useState<string | null>(null)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
   const [verifyToken, setVerifyToken] = useState<string | null>(null)
@@ -126,6 +128,19 @@ export default function PagesPage() {
       await load()
     } catch (e) {
       setError((e as Error).message)
+    }
+  }
+
+  async function handleToggleBot(id: string, current: boolean) {
+    setError("")
+    setTogglingId(id)
+    try {
+      await api.setBotEnabled(id, !current)
+      await load()
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setTogglingId(null)
     }
   }
 
@@ -377,7 +392,11 @@ export default function PagesPage() {
           {pages.map((p) => (
             <div key={p.id} className="p-3 rounded-xl border">
               <div className="flex items-center gap-3">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                <span
+                  className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                    p.bot_enabled ? "bg-emerald-500" : "bg-muted-foreground/40"
+                  }`}
+                />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium truncate">{p.page_name}</p>
                   <p className="text-xs text-muted-foreground truncate">{p.bot_name}</p>
@@ -385,6 +404,16 @@ export default function PagesPage() {
                 <span className="text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-muted text-muted-foreground shrink-0">
                   {p.scan_status}
                 </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleToggleBot(p.id, p.bot_enabled)}
+                  disabled={togglingId === p.id}
+                  title={p.bot_enabled ? "Turn bot service off for this page" : "Turn bot service on for this page"}
+                >
+                  {togglingId === p.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
+                  {p.bot_enabled ? "ON" : "OFF"}
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"

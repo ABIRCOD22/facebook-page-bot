@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # Graph API
     GRAPH_API_VERSION: str = "v26.0"
 
+    # Moderator kill timer (minutes): after a human takes over a conversation,
+    # the bot stays quiet for this long; if the moderator goes idle past it and
+    # a customer is still waiting, the bot reads context and resumes that thread.
+    HANDOVER_KILL_MINUTES: int = 10
+
     # Email (Brevo — free tier, 300/day, single-sender verification, no domain needed)
     BREVO_API_KEY: str = ""
     BREVO_FROM_EMAIL: str = ""

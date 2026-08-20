@@ -81,6 +81,7 @@ class FacebookPage(Base):
     page_name = Column(String(255))
     page_access_token = Column(Text, nullable=False)
     is_active = Column(Boolean, default=True)
+    bot_enabled = Column(Boolean, default=True)  # service on/off switch for this page
     connected_at = Column(DateTime, default=datetime.utcnow)
 
     # Bot configuration
@@ -127,6 +128,7 @@ class Conversation(Base):
     customer_name = Column(String(255))
 
     status = Column(String(20), default="active")  # active, handed_over, closed
+    taken_over_at = Column(DateTime, nullable=True)  # moderator takeover time (kill-timer base)
 
     message_count = Column(Integer, default=0)
     last_message_at = Column(DateTime, default=datetime.utcnow)

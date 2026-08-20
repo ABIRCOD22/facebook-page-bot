@@ -14,6 +14,9 @@ import {
   Loader2,
   Zap,
   TrendingUp,
+  Power,
+  Undo2,
+  Users2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -37,26 +40,54 @@ interface ConvPreview {
   id: string
   customer_name: string
   status: string
+  taken_over_at: string | null
   message_count: number
   last_message_at: string
   preview: string
   preview_sender: string | null
 }
 
+interface PageLite {
+  id: string
+  page_name: string
+  bot_enabled: boolean
+}
+
+function timeAgo(iso: string | null): string {
+  if (!iso) return ""
+  const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
+  if (s < 60) return "just now"
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
+
 export default function OverviewPage() {
   const { user } = useAuth()
   const [stats, setStats] = useState<Stats | null>(null)
   const [convs, setConvs] = useState<ConvPreview[]>([])
+  const [pages, setPages] = useState<PageLite[]>([])
   const [loading, setLoading] = useState(true)
+  const [toggling, setToggling] = useState(false)
+  const [takeAllBusy, setTakeAllBusy] = useState(false)
+  const [returningId, setReturningId] = useState<string | null>(null)
+  const [hint, setHint] = useState("")
+
+  async function loadAll() {
+    try {
+      const [s, c, p] = await Promise.all([api.getStats(), api.listConversations(), api.listPages()])
+      setStats(s)
+      setConvs(c.conversations)
+      setPages(p.pages)
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    Promise.all([api.getStats(), api.listConversations()])
-      .then(([s, c]) => {
-        setStats(s)
-        setConvs(c.conversations.slice(0, 5))
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    loadAll()
   }, [])
 
   const maxBar = Math.max(1, ...(stats?.messages_7d.map((d) => d.count) || [1]))
@@ -70,6 +101,53 @@ export default function OverviewPage() {
   }
 
   const isIdle = stats && !stats.connected_page
+  const page = pages[0]
+  const botOn = page ? page.bot_enabled : false
+  const takenOver = convs.filter((c) => c.status === "handed_over" && c.taken_over_at)
+
+  async function handleToggle() {
+    if (!page || toggling) return
+    setToggling(true)
+    setHint("")
+    try {
+      const res = await api.setBotEnabled(page.id, !botOn)
+      setPages((prev) => prev.map((p) => (p.id === page.id ? { ...p, bot_enabled: res.bot_enabled } : p)))
+      setHint(res.bot_enabled ? "Bot service is now ON." : "Bot service is now OFF — messages are logged but not answered.")
+    } catch (e) {
+      setHint((e as Error).message)
+    } finally {
+      setToggling(false)
+    }
+  }
+
+  async function handleResume(id: string) {
+    setReturningId(id)
+    setHint("")
+    try {
+      await api.resumeConversation(id)
+      await loadAll()
+      setHint("Conversation handed back to the bot.")
+    } catch (e) {
+      setHint((e as Error).message)
+    } finally {
+      setReturningId(null)
+    }
+  }
+
+  async function handleTakeOverAll() {
+    if (takeAllBusy) return
+    setTakeAllBusy(true)
+    setHint("")
+    try {
+      const res = await api.takeoverAllConversations()
+      await loadAll()
+      setHint(`Took over ${res.taken_over} conversation${res.taken_over === 1 ? "" : "s"} — the bot pauses on them and auto-resumes any thread you leave idle.`)
+    } catch (e) {
+      setHint((e as Error).message)
+    } finally {
+      setTakeAllBusy(false)
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -86,21 +164,29 @@ export default function OverviewPage() {
             Here&apos;s what&apos;s happening with your bot today.
           </p>
         </div>
-        {stats && (
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                stats.bot_status === "online"
-                  ? "bg-emerald-500 animate-pulse"
-                  : "bg-muted-foreground/40"
-              }`}
-            />
-            <span className="text-sm font-medium text-muted-foreground capitalize">
-              Bot {stats.bot_status}
-            </span>
-          </div>
+        {page && (
+          <Button
+            variant={botOn ? "outline" : "default"}
+            className="gap-2"
+            onClick={handleToggle}
+            disabled={toggling}
+          >
+            {toggling ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <span
+                className={`w-2.5 h-2.5 rounded-full ${
+                  botOn ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground/40"
+                }`}
+              />
+            )}
+            <Power className="w-4 h-4" />
+            <span className="capitalize">Bot {botOn ? "ON" : "OFF"}</span>
+          </Button>
         )}
       </div>
+
+      {hint && <p className="text-sm text-emerald-600">{hint}</p>}
 
       {/* Idle banner */}
       {isIdle && (
@@ -244,9 +330,9 @@ export default function OverviewPage() {
             </div>
           </CardHeader>
           <CardContent>
-            {convs.length > 0 ? (
+            {convs.slice(0, 5).length > 0 ? (
               <div className="space-y-3">
-                {convs.map((c) => (
+                {convs.slice(0, 5).map((c) => (
                   <div
                     key={c.id}
                     className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-muted/50 transition-colors"
@@ -278,6 +364,64 @@ export default function OverviewPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Hand over customers — moderator-taken threads */}
+      <Card className="border shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Users2 className="w-4 h-4 text-primary" />
+              Hand over customers
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={handleTakeOverAll}
+              disabled={takeAllBusy}
+            >
+              {takeAllBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Users className="w-3 h-3" />}
+              Take over all
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {takenOver.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No customers handed over to you right now. Replying to a customer from the Conversations inbox (or “Take over all”) pauses the bot on that thread automatically.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {takenOver.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-center gap-3 p-2.5 rounded-xl border bg-muted/30"
+                >
+                  <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium truncate">{c.customer_name}</p>
+                      <Badge variant="warning">Handed over</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {c.preview || "No messages"} · taken {timeAgo(c.taken_over_at)}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleResume(c.id)}
+                    disabled={returningId === c.id}
+                  >
+                    {returningId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Undo2 className="w-3 h-3" />}
+                    Get back
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Quick actions */}
       <Card className="border shadow-sm">

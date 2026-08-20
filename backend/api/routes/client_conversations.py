@@ -7,7 +7,7 @@ agent reply inline.
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, update
 
 from api.dependencies import get_current_user
 from core.conversation_manager import ConversationManager
@@ -55,6 +55,7 @@ async def list_conversations(user: User = Depends(get_current_user), db=Depends(
                 "id": c.id,
                 "customer_name": c.customer_name,
                 "status": c.status,
+                "taken_over_at": c.taken_over_at,
                 "message_count": c.message_count,
                 "last_message_at": c.last_message_at,
                 "preview": last.content if last else "",
@@ -85,6 +86,7 @@ async def get_conversation(conversation_id: str, user: User = Depends(get_curren
         "id": conv.id,
         "customer_name": conv.customer_name,
         "status": conv.status,
+        "taken_over_at": conv.taken_over_at,
         "messages": [
             {
                 "id": m.id,
@@ -132,4 +134,49 @@ async def send_message(
         sender_type="human_agent",
         content=body.content,
     )
+
+    # A human reply hands the thread over: the bot goes silent here and a
+    # kill timer starts. Each moderator reply refreshes the timer.
+    await ConversationManager(conv.page_id).take_over(conv.id)
     return {"status": "sent"}
+
+
+@router.post("/{conversation_id}/resume")
+async def resume_conversation(
+    conversation_id: str,
+    user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Give a taken-over conversation back to the bot immediately."""
+    conv = (
+        await db.execute(select(Conversation).where(Conversation.id == conversation_id))
+    ).scalar_one_or_none()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    if conv.page_id not in await _user_page_ids(user.id, db):
+        raise HTTPException(status_code=403, detail="Forbidden.")
+
+    await ConversationManager(conv.page_id).resume(conv.id)
+    return {"status": "resumed"}
+
+
+@router.post("/takeover-all")
+async def takeover_all(user: User = Depends(get_current_user), db=Depends(get_db)):
+    """Moderator takes over every active conversation at once — the bot pauses
+    on all of them in one click. Each thread's kill timer starts now, so the
+    bot will still re-engage any thread the moderator goes quiet on."""
+    from datetime import datetime
+
+    page_ids = await _user_page_ids(user.id, db)
+    if not page_ids:
+        return {"taken_over": 0}
+    result = await db.execute(
+        update(Conversation)
+        .where(
+            Conversation.page_id.in_(page_ids),
+            Conversation.status == "active",
+        )
+        .values(status="handed_over", taken_over_at=datetime.utcnow())
+    )
+    await db.commit()
+    return {"taken_over": result.rowcount or 0}

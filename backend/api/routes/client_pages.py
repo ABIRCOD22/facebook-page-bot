@@ -70,6 +70,10 @@ class AvailableRequest(BaseModel):
     access_token: str
 
 
+class BotToggleRequest(BaseModel):
+    bot_enabled: bool
+
+
 def _pick_chosen_page(pages: list[dict], page_id: str) -> dict | None:
     return next((p for p in pages if p.get("id") == page_id), None)
 
@@ -576,6 +580,7 @@ async def list_pages(user: User = Depends(get_current_user), db=Depends(get_db))
                 "page_id": p.page_id,
                 "page_name": p.page_name,
                 "bot_name": p.bot_name,
+                "bot_enabled": p.bot_enabled if p.bot_enabled is not None else True,
                 "is_active": p.is_active,
                 "connected_at": p.connected_at,
                 "webhook_verified_at": p.webhook_verified_at,
@@ -606,3 +611,26 @@ async def disconnect_page(
     page.is_active = False
     await db.commit()
     return {"status": "disconnected"}
+
+
+@router.put("/{page_db_id}/bot")
+async def toggle_bot(
+    page_db_id: str,
+    body: BotToggleRequest,
+    user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """User-facing service on/off switch. When OFF the webhook still logs
+    incoming messages and marks them seen, but the bot never replies."""
+    page = (
+        await db.execute(
+            select(FacebookPage).where(
+                FacebookPage.id == page_db_id, FacebookPage.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if not page or not page.is_active:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    page.bot_enabled = body.bot_enabled
+    await db.commit()
+    return {"status": "ok", "bot_enabled": page.bot_enabled}

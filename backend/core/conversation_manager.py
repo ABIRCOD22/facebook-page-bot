@@ -111,6 +111,31 @@ class ConversationManager:
                 conversation.status = status
                 await session.commit()
 
+    async def take_over(self, conversation_id: str):
+        """Moderator takes the thread: bot goes silent and a kill timer starts.
+        Calling repeatedly refreshes the timer (moderator is still replying)."""
+        async with AsyncSessionFactory() as session:
+            result = await session.execute(
+                select(Conversation).where(Conversation.id == conversation_id)
+            )
+            conversation = result.scalar_one_or_none()
+            if conversation:
+                conversation.status = "handed_over"
+                conversation.taken_over_at = datetime.utcnow()
+                await session.commit()
+
+    async def resume(self, conversation_id: str):
+        """Give the thread back to the bot immediately (one-click or auto)."""
+        async with AsyncSessionFactory() as session:
+            result = await session.execute(
+                select(Conversation).where(Conversation.id == conversation_id)
+            )
+            conversation = result.scalar_one_or_none()
+            if conversation:
+                conversation.status = "active"
+                conversation.taken_over_at = None
+                await session.commit()
+
     @staticmethod
     async def get_page_by_fb_id(fb_page_id: str) -> FacebookPage:
         """Find our page record by Facebook's page ID."""

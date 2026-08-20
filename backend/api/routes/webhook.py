@@ -173,6 +173,32 @@ async def _process_message(entry: dict, event: dict):
     )
 
     await FacebookService.mark_seen(sender_fb_id, page.page_access_token)
+
+    # Gate 1 — service switch: owner turned the bot off. Messages are still
+    # logged (they see what they missed) but nothing is ever sent back.
+    if page.bot_enabled is False:
+        logger.info("Bot disabled for page %s, reply skipped", page_fb_id)
+        return
+
+    # Gate 2 — moderator takeover with kill timer: a human replied on this
+    # thread, so the bot stays quiet while the moderator is active. If the
+    # moderator goes idle past HANDOVER_KILL_MINUTES and the customer is
+    # still waiting, the bot reads the conversation and resumes it.
+    if conversation.status == "handed_over" and conversation.taken_over_at is not None:
+        idle_seconds = (
+            datetime.utcnow() - conversation.taken_over_at
+        ).total_seconds()
+        if idle_seconds < settings.HANDOVER_KILL_MINUTES * 60:
+            logger.info(
+                "Moderator holds conversation %s, bot stays silent", conversation.id[:8]
+            )
+            return
+        # Moderator ghosted: hand it back and let the bot take over again.
+        await manager.resume(conversation.id)
+        logger.info(
+            "Kill timer expired, bot resumes conversation %s", conversation.id[:8]
+        )
+
     await FacebookService.set_typing_indicator(sender_fb_id, True, page.page_access_token)
 
     history = await manager.get_history(conversation.id, limit=10)
