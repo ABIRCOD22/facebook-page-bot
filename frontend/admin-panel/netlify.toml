@@ -8,3 +8,8 @@
 [build.environment]
   NODE_VERSION = "20"
   NEXT_PUBLIC_ADMIN_API_URL = "https://facebook-page-bot-rdkt.onrender.com"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
