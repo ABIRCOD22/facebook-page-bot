@@ -1,5 +1,7 @@
 const API_BASE = process.env.NEXT_PUBLIC_ADMIN_API_URL || "https://facebook-page-bot-rdkt.onrender.com"
 
+export const WEBHOOK_CALLBACK_URL = `${API_BASE}/api/webhook`
+
 export interface AdminUser {
   id: string
   email: string
@@ -230,7 +232,7 @@ class AdminApiClient {
   }
 
 // ---- White-glove provisioning (configure a new bot for a client) ----
-  async provisionConnectApp(userId: string, body: { fb_app_id: string; fb_app_secret: string; page_access_token: string }) {
+  async provisionConnectApp(userId: string, body: { fb_app_id: string; fb_app_secret: string; page_access_token: string; verify_token?: string }) {
     return this.request<{ status: string; id: string; page_id: string; page_name: string; callback_url: string; verify_token: string }>(
       `/api/admin/users/${userId}/pages/connect-app`,
       { method: "POST", body: JSON.stringify(body) }

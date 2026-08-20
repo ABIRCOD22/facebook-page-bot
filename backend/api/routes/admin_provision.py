@@ -58,6 +58,7 @@ class AdminAppConnectBody(BaseModel):
     fb_app_id: str
     fb_app_secret: str
     page_access_token: str
+    verify_token: str | None = None
 
 
 @router.post("/users/{user_id}/pages/connect-app")
@@ -82,7 +83,13 @@ async def admin_connect_app(
 
     await _enforce_page_limit(db, user, connected_page_id=info["page_id"])
 
-    verify_token = secrets.token_urlsafe(24)
+    if body.verify_token is not None:
+        verify_token = body.verify_token.strip()
+        if not (10 <= len(verify_token) <= 256):
+            raise HTTPException(status_code=400, detail="verify_token must be between 10 and 256 characters")
+    else:
+        verify_token = secrets.token_urlsafe(24)
+
     page = await _save_tenant_page(
         db,
         user,

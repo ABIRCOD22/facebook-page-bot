@@ -2,9 +2,9 @@
 
 import { Suspense, useCallback, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
-import { adminApi } from "@/lib/api"
+import { adminApi, WEBHOOK_CALLBACK_URL } from "@/lib/api"
 import { useAdminAuth } from "@/lib/auth-context"
-import { CheckCircle2, Copy, Fingerprint, KeyRound, Loader2, PlugZap, UserPlus, Wand2 } from "lucide-react"
+import { CheckCircle2, Copy, Fingerprint, KeyRound, Loader2, PlugZap, RefreshCw, ShieldCheck, UserPlus, Wand2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -44,6 +44,14 @@ function ProvisionWizard() {
   const [testing, setTesting] = useState(false)
   const [saved, setSaved] = useState<{ id: string; page_id: string; page_name: string; callback_url: string; verify_token: string } | null>(null)
 
+  const [webhookToken, setWebhookToken] = useState<string | null>(() => newWebhookToken())
+
+  function newWebhookToken() {
+    const buf = new Uint8Array(24)
+    crypto.getRandomValues(buf)
+    return btoa(String.fromCharCode(...buf)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+  }
+
   const [copied, setCopied] = useState<"email" | "url" | "token" | "creds" | null>(null)
 
   const copy = useCallback(async (key: "email" | "url" | "token" | "creds", text: string) => {
@@ -79,6 +87,7 @@ function ProvisionWizard() {
         fb_app_id: appId.trim(),
         fb_app_secret: appSecret.trim(),
         page_access_token: token.trim(),
+        verify_token: webhookToken || undefined,
       })
       setSaved(r)
     } catch (e) { setError(e instanceof Error ? e.message : "Failed to save app credentials") }
@@ -99,6 +108,7 @@ function ProvisionWizard() {
     setStep(0); setError("")
     setClientEmail(""); setClientName(""); setNewClientId(null); setNewPassword(null)
     setAppId(""); setAppSecret(""); setToken(""); setSaved(null); setCopied(null)
+    setWebhookToken(newWebhookToken())
   }
 
   return (
@@ -162,8 +172,86 @@ function ProvisionWizard() {
                 <li>Ask the customer to create their Meta app, add the <b>Messenger</b> product and connect their Facebook page (Development mode is fine for setup).</li>
                 <li>Have them open <b>App Dashboard → Settings → Basic</b> and copy the <b>App ID</b> and <b>App Secret</b> (click Show).</li>
                 <li>Have them open <b>App Dashboard → Messenger → Access Tokens</b> and generate / copy the <b>Page Access Token</b> for their page.</li>
-                <li>Paste the three values below and click <b>Save credentials</b> — we generate the webhook values to hand to the customer.</li>
+                <li>Paste the three values below and click <b>Save credentials</b> — the webhook values above are what you hand to the customer.</li>
               </ol>
+            </CardContent>
+          </Card>
+
+          <Card className="border-amber-500/50 bg-amber-50/50">
+            <CardContent className="p-5 space-y-3">
+              <h3 className="font-semibold flex items-center gap-2 text-amber-800">
+                <ShieldCheck className="w-5 h-5" /> Permissions the customer must allow
+              </h3>
+              <p className="text-sm text-amber-800/90">
+                When the customer connects/authorizes their Meta app, they must grant <b>all</b> of these permissions
+                — otherwise the bot can't receive messages or scan the page:
+              </p>
+              <ul className="text-sm text-amber-900 space-y-2">
+                <li className="flex gap-2">
+                  <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                  <span><b>pages_messaging</b> — receive &amp; reply to messages as the page.</span>
+                </li>
+                <li className="flex gap-2">
+                  <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                  <span><b>pages_messaging_subscriptions</b> — receive Messenger webhook events.</span>
+                </li>
+                <li className="flex gap-2">
+                  <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                  <span><b>pages_read_engagement</b> — read page info, posts and insights (used by the scan).</span>
+                </li>
+                <li className="flex gap-2">
+                  <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                  <span><b>pages_read_user_content</b> — read posts/comments from the page and people interacting.</span>
+                </li>
+                <li className="flex gap-2">
+                  <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                  <span><b>pages_show_list</b> — list the pages the customer manages so we can pick the right one.</span>
+                </li>
+                <li className="flex gap-2">
+                  <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
+                  <span><b>business_management</b> — manage the Messenger app &amp; its connected pages.</span>
+                </li>
+              </ul>
+              <p className="text-xs text-amber-800/80">
+                Found in <b>App Dashboard → App Review → Permissions and Features</b>. Development mode is fine for
+                setup; going live requires Standard Access via App Review for these permissions.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-5 space-y-3">
+              <h3 className="font-semibold flex items-center gap-2">
+                <PlugZap className="w-5 h-5 text-primary" /> Webhook Callback URL
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Send these <b>two values</b> to the customer. They paste them into{" "}
+                <b>Meta App Dashboard → Messenger → Webhooks</b>. The URL is the same for every customer — the{" "}
+                <b>unique verify token</b> below is what identifies their page, so it must stay secret until they connect.
+              </p>
+              <div>
+                <Label className="text-xs">Callback URL</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <code className="flex-1 text-xs bg-muted px-2 py-1.5 rounded break-all select-all">{WEBHOOK_CALLBACK_URL}</code>
+                  <Button size="sm" variant="outline" onClick={() => copy("url", WEBHOOK_CALLBACK_URL)}>
+                    <Copy className="w-3.5 h-3.5" />{copied === "url" ? "Copied" : "Copy"}
+                  </Button>
+                </div>
+              </div>
+              {webhookToken && (
+                <div>
+                  <Label className="text-xs">Unique webhook verify token</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <code className="flex-1 text-xs bg-muted px-2 py-1.5 rounded break-all select-all">{webhookToken}</code>
+                    <Button size="sm" variant="outline" onClick={() => copy("token", webhookToken!)}>
+                      <Copy className="w-3.5 h-3.5" />{copied === "token" ? "Copied" : "Copy"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setWebhookToken(newWebhookToken())}>
+                      <RefreshCw className="w-3.5 h-3.5" /> Regenerate
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -265,6 +353,30 @@ function ProvisionWizard() {
                 <Copy className="w-4 h-4 mr-1" /> {copied === "creds" ? "Copied!" : "Copy email + password"}
               </Button>
             </div>
+
+            {saved && (
+              <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
+                <p className="text-xs font-medium">Webhook values (already connected)</p>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Callback URL</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-background px-2 py-1.5 rounded break-all select-all">{saved.callback_url}</code>
+                    <Button size="sm" variant="outline" onClick={() => copy("url", saved.callback_url)}>
+                      <Copy className="w-3.5 h-3.5" />{copied === "url" ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">Webhook verify token</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-background px-2 py-1.5 rounded break-all select-all">{saved.verify_token}</code>
+                    <Button size="sm" variant="outline" onClick={() => copy("token", saved.verify_token)}>
+                      <Copy className="w-3.5 h-3.5" />{copied === "token" ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex justify-end">
               <Button size="sm" variant="ghost" onClick={reset}>
                 Configure another bot
