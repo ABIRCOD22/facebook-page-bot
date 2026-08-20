@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 from google import genai
@@ -39,7 +40,7 @@ def _generation_config(**overrides):
         "temperature": 0.7,
         "top_p": 0.8,
         "top_k": 40,
-        "max_output_tokens": 1024,
+        "max_output_tokens": 2048,
         "safety_settings": [
             types.SafetySetting(
                 category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
@@ -139,7 +140,14 @@ class AIEngine:
                 should_handover=parsed.get("should_handover", False),
             )
         except json.JSONDecodeError:
-            logger.warning("AI returned non-JSON response, using raw text")
+            # ponytail: Gemini sometimes returns truncated JSON — try regex
+            # to salvage the "response" value from partial output instead of
+            # forwarding raw JSON to the user on Facebook.
+            logger.warning("AI returned non-JSON response, attempting extraction")
+            match = re.search(r'"response"\s*:\s*"((?:[^"\\]|\\.)*)', raw_text)
+            if match:
+                extracted = match.group(1).replace('\\"', '"').replace("\\n", "\n")
+                return AIResponse(text=extracted.strip()[:1900], confidence=50, quick_replies=[])
             return AIResponse(text=raw_text.strip()[:1900], confidence=50, quick_replies=[])
 
     def _format_knowledge(self, results) -> str:
