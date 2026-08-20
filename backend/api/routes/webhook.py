@@ -3,6 +3,7 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import select, update
 
 from config import get_settings
@@ -37,7 +38,7 @@ async def verify_webhook(
     if hub_mode == "subscribe" and hub_verify_token:
         if hub_verify_token == settings.FB_VERIFY_TOKEN:
             logger.info("Webhook verified by Facebook (global token)")
-            return int(hub_challenge) if hub_challenge.isdigit() else hub_challenge
+            return PlainTextResponse(hub_challenge or "")
         async with AsyncSessionFactory() as session:
             page = (
                 await session.execute(
@@ -52,7 +53,7 @@ async def verify_webhook(
                 page.webhook_verified_at = datetime.utcnow()
                 await session.commit()
                 logger.info("Webhook verified for tenant page %s", page.page_id)
-                return int(hub_challenge) if hub_challenge.isdigit() else hub_challenge
+                return PlainTextResponse(hub_challenge or "")
 
     logger.warning("Webhook verification FAILED")
     raise HTTPException(status_code=403, detail="Verification failed")
