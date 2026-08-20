@@ -229,60 +229,18 @@ class AdminApiClient {
     })
   }
 
-  // ---- White-glove provisioning (configure a new bot for a client) ----
-  async provisionFindPages(userId: string, accessToken: string) {
-    return this.request<{ pages: any[]; token_type?: string }>(
-      `/api/admin/users/${userId}/pages/available`,
-      { method: "POST", body: JSON.stringify({ access_token: accessToken }) }
-    )
-  }
-
-  async provisionConnectPage(userId: string, body: { page_access_token: string; page_id?: string }) {
-    return this.request<{ status: string; id: string; page_id: string; page_name: string; scan?: any }>(
-      `/api/admin/users/${userId}/pages/connect`,
+// ---- White-glove provisioning (configure a new bot for a client) ----
+  async provisionConnectApp(userId: string, body: { fb_app_id: string; fb_app_secret: string; page_access_token: string }) {
+    return this.request<{ status: string; id: string; page_id: string; page_name: string; callback_url: string; verify_token: string }>(
+      `/api/admin/users/${userId}/pages/connect-app`,
       { method: "POST", body: JSON.stringify(body) }
     )
   }
 
-  async provisionFbAuthorize(userId: string) {
-    return this.request<{ auth_url: string; state: string }>(
-      `/api/admin/users/${userId}/fb/authorize`,
+  async provisionTestConnection(pageDbId: string) {
+    return this.request<{ status: string; page_id: string; page_name: string; verified_at: string }>(
+      `/api/admin/bots/${pageDbId}/test-connection`,
       { method: "POST" }
-    )
-  }
-
-  async provisionFbComplete(userId: string, code: string, state: string) {
-    return this.request<{ token_type: string; pages: { page_id: string; page_name: string; tasks: string[] }[] }>(
-      `/api/admin/users/${userId}/fb/complete`,
-      { method: "POST", body: JSON.stringify({ code, state }) }
-    )
-  }
-
-  async provisionFbSelect(userId: string, pageId: string) {
-    return this.request<{ status: string; id: string; page_id: string; page_name: string; scan?: any }>(
-      `/api/admin/users/${userId}/fb/select`,
-      { method: "POST", body: JSON.stringify({ page_id: pageId }) }
-    )
-  }
-
-  async provisionUpdateConfig(pageDbId: string, body: Record<string, any>) {
-    return this.request<{ status: string; message: string }>(
-      `/api/admin/bots/${pageDbId}/config`,
-      { method: "PUT", body: JSON.stringify(body) }
-    )
-  }
-
-  async provisionScan(pageDbId: string) {
-    return this.request<{ status: string; summary?: any; error?: string }>(
-      `/api/admin/bots/${pageDbId}/scan`,
-      { method: "POST" }
-    )
-  }
-
-  async provisionResetPassword(userId: string, password?: string) {
-    return this.request<{ ok: boolean; password: string }>(
-      `/api/admin/users/${userId}/reset-password`,
-      { method: "POST", body: JSON.stringify({ password: password || null }) }
     )
   }
 

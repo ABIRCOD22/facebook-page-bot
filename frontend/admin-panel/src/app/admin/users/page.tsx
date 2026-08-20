@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { Search, Ban, CheckCircle2, Trash2, Eye, Users, RefreshCw, UserPlus, X } from "lucide-react"
+import { Search, Ban, CheckCircle2, Trash2, Eye, Users, RefreshCw, UserPlus, X, Copy } from "lucide-react"
 import { adminApi } from "@/lib/api"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +22,7 @@ export default function UsersPage() {
   const [showAdd, setShowAdd] = useState(false)
   const [newUser, setNewUser] = useState({ email: "", full_name: "", password: "", tier: "" })
   const [saving, setSaving] = useState(false)
+  const [createdCreds, setCreatedCreds] = useState<{ email: string; password: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -61,18 +62,19 @@ export default function UsersPage() {
   const pages = Math.ceil(total / LIMIT)
 
   const createUser = async () => {
-    if (!newUser.email || !newUser.password) {
-      alert("Email and password are required")
+    if (!newUser.email) {
+      alert("Email is required")
       return
     }
     setSaving(true)
     try {
-      await adminApi.createUser({
+      const r = await adminApi.createUser({
         email: newUser.email,
-        password: newUser.password,
+        password: newUser.password || null,
         full_name: newUser.full_name,
         tier: newUser.tier || null,
       })
+      setCreatedCreds({ email: newUser.email, password: r.password || "" })
       setShowAdd(false)
       setNewUser({ email: "", full_name: "", password: "", tier: "" })
       setOffset(0)
@@ -82,6 +84,12 @@ export default function UsersPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const copyCreds = async () => {
+    if (!createdCreds) return
+    await navigator.clipboard.writeText(`${createdCreds.email}\n${createdCreds.password}`)
+    alert("Copy-paste to your client: email + password")
   }
 
   return (
@@ -111,7 +119,7 @@ export default function UsersPage() {
         </div>
       </div>
 
-      {showAdd && (
+{showAdd && (
         <Card>
           <CardContent className="p-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -124,8 +132,9 @@ export default function UsersPage() {
                 <Input placeholder="Jane Doe" value={newUser.full_name} onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })} />
               </div>
               <div>
-                <Label className="text-xs">Password *</Label>
-                <Input type="password" placeholder="••••••••" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
+                <Label className="text-xs">Password</Label>
+                <Input type="password" placeholder="blank = auto-generate" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
+                <p className="text-[11px] text-muted-foreground mt-1">Leave empty to auto-generate a password</p>
               </div>
               <div>
                 <Label className="text-xs">Tier</Label>
@@ -137,6 +146,21 @@ export default function UsersPage() {
                 {saving ? "Creating…" : "Create user"}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {createdCreds && (
+        <Card className="border-emerald-500/40 bg-emerald-500/5">
+          <CardContent className="p-4 space-y-2">
+            <p className="text-sm font-medium text-emerald-600">User created — hand these credentials to your client</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div><Label className="text-xs text-muted-foreground">Email</Label><p className="font-mono">{createdCreds.email}</p></div>
+              <div><Label className="text-xs text-muted-foreground">Password</Label><p className="font-mono">{createdCreds.password || "—"}</p></div>
+            </div>
+            {createdCreds.password && (
+              <Button size="sm" variant="outline" onClick={copyCreds}><Copy className="w-4 h-4 mr-1" /> Copy email + password</Button>
+            )}
           </CardContent>
         </Card>
       )}

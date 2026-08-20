@@ -21,11 +21,13 @@ import {
   X,
   ChevronRight,
   ShieldCheck,
+  Wand2,
 } from "lucide-react"
 
 const navItems = [
   { href: "/admin", label: "Overview", icon: LayoutDashboard },
   { href: "/admin/users", label: "User Management", icon: Users },
+  { href: "/provision", label: "Provision Bot", icon: Wand2 },
   { href: "/admin/subscriptions", label: "Subscriptions", icon: CreditCard },
   { href: "/admin/bots", label: "Bot Monitor", icon: Bot },
   { href: "/admin/conversations", label: "Conversations", icon: MessageSquare },

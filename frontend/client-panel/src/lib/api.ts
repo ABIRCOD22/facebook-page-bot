@@ -195,25 +195,7 @@ class ApiClient {
     return this.request<{ status: string; is_active: boolean }>(`/api/client/knowledge/${id}/toggle`, { method: "PUT" })
   }
 
-  // ---- Facebook pages (BYOA) ----
-  async connectPage(pageAccessToken: string, fbAppId?: string, fbAppSecret?: string) {
-    return this.request<{ status: string; id: string; page_id: string; page_name: string; verify_token: string | null }>("/api/client/pages/connect", {
-      method: "POST",
-      body: JSON.stringify({
-        page_access_token: pageAccessToken,
-        fb_app_id: fbAppId || undefined,
-        fb_app_secret: fbAppSecret || undefined,
-      }),
-    })
-  }
-
-  async connectByoApp(appId: string, appSecret: string, code: string, redirectUri: string) {
-    return this.request<{ status: string; id: string; page_id: string; page_name: string }>("/api/client/pages/connect-byo", {
-      method: "POST",
-      body: JSON.stringify({ app_id: appId, app_secret: appSecret, code, redirect_uri: redirectUri }),
-    })
-  }
-
+  // ---- Facebook pages ----
   async listPages() {
     return this.request<{
       pages: Array<{

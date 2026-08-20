@@ -1,13 +1,14 @@
-"""Admin-led white-glove provisioning: connect + configure + scan + deliver.
+"""Admin-led white-glove provisioning: create client, save their Meta app
+credentials, hand over the Callback URL + Webhook token, verify the customer
+connected the webhook, and deliver dashboard credentials.
 
-The admin does the Meta handshake for a page owner (token paste or the owner's
-Facebook Login approved in a popup), configures the bot, runs the business
-scan, and hands over generated dashboard credentials. Reuses the client-side
-connector cores so connect behavior is identical for both paths.
+The admin pastes the customer's App ID / App Secret / Page Access Token; the
+customer finishes the webhook setup in their own Meta App Dashboard; the admin
+confirms with /test-connection before handing over credentials. Reuses the
+client page-save and validation cores so behavior is identical across paths.
 """
 
 import secrets
-import time
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -16,36 +17,21 @@ from sqlalchemy import select
 from api.dependencies import require_admin
 from api.routes.client_bot import BotSettingsUpdate, VALID_LANGUAGES, VALID_TONES
 from api.routes.client_pages import (
-    FB_STAGING_TTL,
-    AvailableRequest,
-    ConnectRequest,
     _enforce_page_limit,
-    _pick_chosen_page,
     _save_tenant_page,
-    available_pages_core,
-    build_oauth_url,
-    connect_page_core,
 )
-from api.routes.client_pages import _fb_staging as _staging  # same dict, prefixed key
 from config import get_settings
 from database.connection import get_db
 from models.database_models import FacebookPage, User
 from services.audit_service import log_admin_action
 from services.business_scanner import scan_page
 from services.page_connector import (
-    configure_app_webhook,
-    exchange_code,
-    list_manageable_pages,
-    make_long_lived_user_token,
-    subscribe_app,
+    test_connection,
+    validate_token,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin-provision"])
 settings = get_settings()
-
-
-def _staging_key(user_id: str) -> str:
-    return f"admin:{user_id}"
 
 
 async def _get_target_user(user_id: str, db) -> User:
@@ -66,177 +52,55 @@ async def _get_page(page_db_id: str, db) -> FacebookPage:
     return page
 
 
-# ---------- connect: pasted token (owner brought app id/token) ----------
+# ---------- connect: admin pastes the customer's app id/secret/token ----------
 
-@router.post("/users/{user_id}/pages/available")
-async def admin_available_pages(
+class AdminAppConnectBody(BaseModel):
+    fb_app_id: str
+    fb_app_secret: str
+    page_access_token: str
+
+
+@router.post("/users/{user_id}/pages/connect-app")
+async def admin_connect_app(
     user_id: str,
-    body: AvailableRequest,
+    body: AdminAppConnectBody,
     admin: User = Depends(require_admin),
     db=Depends(get_db),
 ):
-    """What the owner's pasted token can see — same resolution as the client
-    'Find my page' step, so the admin runs the exact flow the owner would."""
-    await _get_target_user(user_id, db)
-    return await available_pages_core(body)
+    """Save the customer's app credentials + page token and return the
+    Callback URL + Webhook verify token the admin hands to the customer.
 
-
-@router.post("/users/{user_id}/pages/connect")
-async def admin_connect_page(
-    user_id: str,
-    body: ConnectRequest,
-    admin: User = Depends(require_admin),
-    db=Depends(get_db),
-):
-    """Connect the page for the target user: same token resolution, limit
-    enforcement, webhook subscribe and auto-scan as the client connect."""
+    The webhook is NOT configured here — the customer does that in their own
+    Meta App Dashboard (Messenger → Webhooks) using the returned values. The
+    admin uses /test-connection afterwards to confirm the customer finished.
+    """
     user = await _get_target_user(user_id, db)
-    result = await connect_page_core(db, user, body)
-    await log_admin_action(admin.id, "provision_connect", "page", result.get("id"), detail=f"user={user.email}")
-    return result
-
-
-# ---------- connect: owner's Facebook Login (we do it with their permission) ----------
-
-class FbCompleteBody(BaseModel):
-    code: str
-    state: str
-
-
-class FbSelectBody(BaseModel):
-    page_id: str
-
-
-@router.post("/users/{user_id}/fb/authorize")
-async def admin_fb_authorize(
-    user_id: str,
-    admin: User = Depends(require_admin),
-    db=Depends(get_db),
-):
-    """Start Facebook Login for the owner's page: the owner approves in
-    Facebook's own screen (their credentials never touch our server). The
-    redirect lands on the admin panel provisioning page."""
-    await _get_target_user(user_id, db)
-    state = secrets.token_urlsafe(16)
-    _staging[_staging_key(user_id)] = {"state": state, "expires": time.time() + FB_STAGING_TTL}
-    return {
-        "auth_url": build_oauth_url(settings.FB_APP_ID, settings.FB_ADMIN_REDIRECT_URI, state),
-        "state": state,
-    }
-
-
-@router.post("/users/{user_id}/fb/complete")
-async def admin_fb_complete(
-    user_id: str,
-    body: FbCompleteBody,
-    admin: User = Depends(require_admin),
-    db=Depends(get_db),
-):
-    """Exchange the owner's OAuth code for the manageable pages list."""
-    await _get_target_user(user_id, db)
-    staged = _staging.get(_staging_key(user_id))
-    if (
-        not staged
-        or staged.get("state") != body.state
-        or staged.get("expires", 0) < time.time()
-    ):
-        raise HTTPException(status_code=400, detail="This Facebook sign-in link is stale — start again.")
     try:
-        short = await exchange_code(
-            settings.FB_APP_ID, settings.FB_APP_SECRET, body.code, settings.FB_ADMIN_REDIRECT_URI
-        )
-        long = await make_long_lived_user_token(settings.FB_APP_ID, settings.FB_APP_SECRET, short)
-        pages = await list_manageable_pages(long)
+        info = await validate_token(body.page_access_token)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Facebook sign-in failed: {e}")
-    if not pages:
-        raise HTTPException(
-            status_code=400,
-            detail="No pages found for this Facebook account. The owner must be admin/analyst on at least one page.",
-        )
+        raise HTTPException(status_code=400, detail=str(e))
 
-    _staging[_staging_key(user_id)] = {
-        "state": staged["state"],
-        "pages": pages,
-        "expires": time.time() + FB_STAGING_TTL,
-    }
-    return {
-        "token_type": "user",
-        "pages": [
-            {"page_id": p.get("id"), "page_name": p.get("name") or f"Page {p.get('id')}", "tasks": p.get("tasks", [])}
-            for p in pages
-        ],
-    }
+    await _enforce_page_limit(db, user, connected_page_id=info["page_id"])
 
-
-@router.post("/users/{user_id}/fb/select")
-async def admin_fb_select(
-    user_id: str,
-    body: FbSelectBody,
-    admin: User = Depends(require_admin),
-    db=Depends(get_db),
-):
-    """Save the chosen owner page under the target user, subscribe our shared
-    app's webhook, and auto-scan — identical tail to the client fb/select."""
-    user = await _get_target_user(user_id, db)
-    staged = _staging.get(_staging_key(user_id))
-    if not staged or staged.get("expires", 0) < time.time():
-        raise HTTPException(status_code=400, detail="Facebook sign-in expired — start again.")
-    pages = staged.get("pages", [])
-    chosen = _pick_chosen_page(pages, body.page_id)
-    if not chosen:
-        raise HTTPException(status_code=404, detail="Selected page not found — start the Facebook sign-in again.")
-    page_token = chosen.get("access_token")
-    if not page_token:
-        raise HTTPException(status_code=400, detail="Meta did not return a page token. Re-check the ChatriX app's permissions.")
-
-    await _enforce_page_limit(db, user, connected_page_id=chosen["id"])
-
+    verify_token = secrets.token_urlsafe(24)
     page = await _save_tenant_page(
         db,
         user,
-        chosen["id"],
-        chosen.get("name") or f"Page {chosen['id']}",
-        page_token,
-        settings.FB_APP_ID,
-        None,  # fb_app_secret=None → webhook signature uses our global secret
-        None,
+        info["page_id"],
+        info["page_name"],
+        body.page_access_token,
+        body.fb_app_id,
+        body.fb_app_secret,
+        verify_token,
     )
-
-    # Ensure our shared app's webhook subscription points at us (idempotent).
-    try:
-        await configure_app_webhook(
-            settings.FB_APP_ID,
-            settings.FB_APP_SECRET,
-            f"{settings.WEBHOOK_PUBLIC_URL}/api/webhook",
-            settings.FB_VERIFY_TOKEN,
-        )
-    except Exception as e:  # noqa
-        import logging
-        logging.getLogger(__name__).warning("Shared-app webhook configure failed: %s", e)
-
-    try:
-        await subscribe_app(page.page_id, page.page_access_token)
-    except Exception as e:  # noqa
-        import logging
-        logging.getLogger(__name__).warning("Webhook subscribe failed for page %s: %s", page.page_id, e)
-
-    scan = None
-    try:
-        scan = await scan_page(user.id, page)
-    except Exception as e:  # noqa
-        import logging
-        logging.getLogger(__name__).warning("Auto-scan failed for page %s: %s", page.page_id, e)
-
-    _staging.pop(_staging_key(user_id), None)
-    await log_admin_action(admin.id, "provision_connect", "page", page.id, detail=f"user={user.email}")
+    await log_admin_action(admin.id, "provision_connect_app", "page", page.id, detail=f"user={user.email}")
     return {
-        "status": "connected",
+        "status": "awaiting_webhook",
         "id": page.id,
         "page_id": page.page_id,
         "page_name": page.page_name,
-        "verify_token": None,
-        "scan": scan,
+        "callback_url": f"{settings.WEBHOOK_PUBLIC_URL}/api/webhook",
+        "verify_token": page.verify_token,
     }
 
 
@@ -285,3 +149,43 @@ async def admin_bot_scan(
     result = await scan_page(page.user_id, page)
     await log_admin_action(admin.id, "provision_scan", "page", page_db_id)
     return {"status": "ok", **result}
+
+
+# ---------- verify the customer actually connected the webhook ----------
+
+@router.post("/bots/{page_db_id}/test-connection")
+async def admin_test_connection(
+    page_db_id: str,
+    admin: User = Depends(require_admin),
+    db=Depends(get_db),
+):
+    """Confirm the customer really connected the webhook before handing over
+    credentials. Proves it by Meta's own liveness signal: the GET challenge
+    against our /api/webhook with the page's verify token sets
+    webhook_verified_at. Also re-checks the stored page token still works."""
+    page = await _get_page(page_db_id, db)
+
+    if not page.webhook_verified_at:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Webhook not connected yet. Send the customer the Callback URL and Webhook "
+                "verify token, ask them to add them in their Meta App Dashboard (Messenger → "
+                "Webhooks), and have them confirm. Then test again."
+            ),
+        )
+
+    probe = await test_connection(page.page_id, page.page_access_token)
+    if not probe.get("valid"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Stored page token is no longer valid: {probe.get('error', 'unknown error')}. Regenerate it and save the app credentials again.",
+        )
+
+    await log_admin_action(admin.id, "provision_test_connection", "page", page_db_id)
+    return {
+        "status": "connected",
+        "page_id": page.page_id,
+        "page_name": page.page_name,
+        "verified_at": page.webhook_verified_at.isoformat(),
+    }

@@ -23,26 +23,13 @@ def check(name, cond, extra=""):
 
 
 # ---- monkeypatches (set before any request) ----
-from services import page_connector
-import api.routes.client_pages as cp
 import api.routes.admin_provision as ap
 
-cp.validate_token = lambda *a, **k: asyncio.sleep(0, result={
+ap.validate_token = lambda *a, **k: asyncio.sleep(0, result={
     "page_id": "PAGE_" + (a[0] if a else k.get("token", "")),
     "page_name": "Page " + str(a[0] if a else k.get("token", ""))[-4:],
 })
-cp.subscribe_app = lambda *a, **k: asyncio.sleep(0, result=True)
-ap.subscribe_app = lambda *a, **k: asyncio.sleep(0, result=True)
-ap.configure_app_webhook = lambda *a, **k: True
-
-# available/connect user-token path: list_manageable_pages returns pages
-FAKE_PAGES = [
-    {"id": "FAKE_PG", "name": "Fake Provision Page", "access_token": "fakepgtok", "tasks": ["MESSAGING"]},
-    {"id": "FAKE_PG2", "name": "Second Fake Page", "access_token": "fakepgtok2", "tasks": ["MESSAGING"]},
-]
-cp.list_manageable_pages = lambda *a, **k: asyncio.sleep(0, result=FAKE_PAGES)
-ap.exchange_code = lambda *a, **k: asyncio.sleep(0, result="shorttok")
-ap.make_long_lived_user_token = lambda *a, **k: asyncio.sleep(0, result="longtok")
+ap.test_connection = lambda *a, **k: asyncio.sleep(0, result={"valid": True})
 
 ap.scan_page = lambda *a, **k: asyncio.sleep(0, result={
     "profile": {"page_name": "Fake Provision Page", "tone": "professional_friendly"},
@@ -79,31 +66,30 @@ def main():
         check("generated password returned", bool(r.json().get("password")), f"({len(r.json().get('password') or '')} chars)")
         uid = r.json()["id"]
 
-        # pages/available with a pasted token -> user-token path lists pages
-        r = client.post(f"/api/admin/users/{uid}/pages/available", json={"access_token": "tk_user"}, headers=A)
-        check("pages/available -> 200 + pages", r.status_code == 200 and len(r.json().get("pages", [])) >= 1,
+        # connect-app: save the customer's app id/secret/token -> awaiting_webhook
+        r = client.post(f"/api/admin/users/{uid}/pages/connect-app",
+                        json={"fb_app_id": "APP1", "fb_app_secret": "SEC1", "page_access_token": "tk_user"}, headers=A)
+        check("connect-app -> 200 + awaiting_webhook", r.status_code == 200
+              and r.json().get("status") == "awaiting_webhook", f"({r.status_code}): {r.text[:120]}")
+        check("connect-app returns callback_url + verify_token",
+              r.status_code == 200 and r.json().get("callback_url") and r.json().get("verify_token"),
               f"({r.status_code})")
-
-        # connect page for that user on behalf
-        r = client.post(f"/api/admin/users/{uid}/pages/connect",
-                        json={"page_access_token": "tk_user", "page_id": "FAKE_PG"}, headers=A)
-        check("connect for user -> 200", r.status_code == 200, f"({r.status_code}): {r.text[:120]}")
         page_db_id = r.json()["id"] if r.status_code == 200 else None
+        verify_token = r.json().get("verify_token")
 
-        # fb/authorize -> dialog URL must point at the admin redirect URI
-        r = client.post(f"/api/admin/users/{uid}/fb/authorize", headers=A)
-        check("fb/authorize -> 200 + admin redirect", r.status_code == 200
-              and s.FB_ADMIN_REDIRECT_URI in r.json().get("auth_url", ""), f"({r.status_code})")
-        fb_state = r.json().get("state")
+        # test-connection before the customer confirmed the webhook -> 400
+        r = client.post(f"/api/admin/bots/{page_db_id}/test-connection", headers=A)
+        check("test-connection (webhook not connected) -> 400", r.status_code == 400, f"({r.status_code})")
 
-        # fb/complete with a fake code + state
-        r = client.post(f"/api/admin/users/{uid}/fb/complete", json={"code": "fak", "state": fb_state}, headers=A)
-        check("fb/complete -> 200 + pages", r.status_code == 200 and len(r.json().get("pages", [])) >= 1,
-              f"({r.status_code})")
+        # customer connects the webhook in their Meta App Dashboard: Meta's GET
+        # challenge against our /api/webhook with the page verify token
+        r = client.get("/api/webhook", params={"hub.mode": "subscribe", "hub.verify_token": verify_token, "hub.challenge": "1234"})
+        check("webhook GET challenge (page token) -> 200 + echo", r.status_code == 200 and r.text == "1234",
+              f"({r.status_code}): {r.text[:80]}")
 
-        # fb/select -> save the owner page under the target user
-        r = client.post(f"/api/admin/users/{uid}/fb/select", json={"page_id": "FAKE_PG"}, headers=A)
-        check("fb/select -> 200", r.status_code == 200, f"({r.status_code}): {r.text[:120]}")
+        # test-connection after confirmation -> 200
+        r = client.post(f"/api/admin/bots/{page_db_id}/test-connection", headers=A)
+        check("test-connection (webhook connected) -> 200", r.status_code == 200, f"({r.status_code}): {r.text[:120]}")
 
         # config the bot: invalid tone -> 400, valid -> 200
         r = client.put(f"/api/admin/bots/{page_db_id}/config",
@@ -128,9 +114,9 @@ def main():
         check("new password logs in as user", r.status_code == 200, f"({r.status_code})")
 
         # page limit: free-tier user connecting 2nd page -> 403
-        r = client.post(f"/api/admin/users/{uid}/pages/connect",
-                        json={"page_access_token": "tk2", "page_id": "FAKE_PG2"}, headers=A)
-        check("connect 2nd page (free limit) -> 403", r.status_code == 403, f"({r.status_code})")
+        r = client.post(f"/api/admin/users/{uid}/pages/connect-app",
+                        json={"fb_app_id": "APP2", "fb_app_secret": "SEC2", "page_access_token": "tk2"}, headers=A)
+        check("connect-app 2nd page (free limit) -> 403", r.status_code == 403, f"({r.status_code})")
 
         # cleanup: delete the throwaway user + pages
         r = client.delete(f"/api/admin/users/{uid}", headers=A)
