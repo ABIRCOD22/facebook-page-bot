@@ -438,14 +438,28 @@ async def connect_page_core(db, user: User, body: ConnectRequest) -> dict:
         None,
     )
 
-    # Per-page verify token for the user's own app webhook config:
-    # Meta will GET our /api/webhook with this token when they save
-    # the callback URL in App Dashboard. Only generated when the user
-    # brings their own app (their app_secret signs the events).
-    if body.fb_app_id and not page.verify_token:
-        page.verify_token = secrets.token_urlsafe(24)
-        await db.commit()
-        await db.refresh(page)
+    # Own-app webhook wiring. When the user provides App ID + App Secret we
+    # configure their app to POST events straight to us — no manual callback
+    # config in App Dashboard needed. Without app credentials (legacy demo
+    # token) we fall back to the shared-app subscription only.
+    if page.fb_app_id and page.fb_app_secret:
+        if not page.verify_token:
+            page.verify_token = secrets.token_urlsafe(24)
+            await db.commit()
+            await db.refresh(page)
+        if not await configure_app_webhook(
+            page.fb_app_id,
+            page.fb_app_secret,
+            f"{settings.WEBHOOK_PUBLIC_URL}/api/webhook",
+            page.verify_token,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Webhook config failed on your Meta app. Double-check the App ID and App Secret "
+                    "and that the Messenger product is added to the app."
+                ),
+            )
 
     # Best-effort: subscribe the app to receive webhook events. Non-fatal.
     try:

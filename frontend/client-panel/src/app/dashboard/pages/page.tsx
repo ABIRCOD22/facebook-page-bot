@@ -8,6 +8,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { api } from "@/lib/api"
 
+const PRIVACY_POLICY_URL =
+  "https://docs.google.com/document/d/1k_8kG2Nn8fiTO75uPxBTX9W54hdnlQBfy-2BoO_DmNI/edit?usp=sharing"
+
 interface BusinessProfile {
   page_name: string
   category: string
@@ -45,7 +48,6 @@ export default function PagesPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
-  const [verifyToken, setVerifyToken] = useState<string | null>(null)
   const [hasPage, setHasPage] = useState<boolean | null>(null)
 
   async function load() {
@@ -64,16 +66,14 @@ export default function PagesPage() {
   async function handleConnect() {
     setError("")
     setSuccess("")
-    setVerifyToken(null)
-    if (!token.trim()) {
-      setError("Paste your Page Access Token to connect.")
+    if (!token.trim() || !appId.trim() || !appSecret.trim()) {
+      setError("Fill in your Page Access Token, App ID and App Secret before connecting.")
       return
     }
     setLoading(true)
     try {
-      const res = await api.connectPage(token.trim(), appId.trim() || undefined, appSecret.trim() || undefined)
-      setSuccess("Page connected — your bot is now live on that page.")
-      if (res.verify_token) setVerifyToken(res.verify_token)
+      await api.connectPage(token.trim(), appId.trim(), appSecret.trim())
+      setSuccess("Page connected — your webhook was configured automatically and your bot is live.")
       setToken("")
       setAppId("")
       setAppSecret("")
@@ -199,186 +199,225 @@ export default function PagesPage() {
       {pages.length === 0 && hasPage === true && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Next steps — connect your bot to our system</CardTitle>
-            <CardDescription>Follow these steps in order. Each one is a few clicks — no coding needed.</CardDescription>
+            <CardTitle className="text-lg">Set up your bot — 6 simple steps</CardTitle>
+            <CardDescription>Follow the steps in order. Everything is a few clicks — no coding needed.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5 text-sm">
-            <div className="space-y-1.5">
-              <p className="font-semibold">Step 1 — Create your Meta app (one time, ~5 min)</p>
-              <ol className="list-decimal list-inside text-muted-foreground space-y-1">
-                <li>Open <a className="ulink" href="https://developers.facebook.com/apps" target="_blank" rel="noopener noreferrer">developers.facebook.com/apps</a> in a new tab (logged in as your page&apos;s admin).</li>
-                <li>Click <b>Create app</b> → choose type <b>Business</b> → name it (e.g. &quot;My Bot App&quot;) → <b>Create</b>. Development mode is fine.</li>
-                <li>Go to <b>Settings → Basic</b> and keep this tab open — you need the <b>App ID</b> (a ~12-digit number) and <b>App Secret</b> (click <b>Show</b> → copy) in the next step.</li>
-              </ol>
+            <div className="rounded-lg border border-[#1877F2]/30 bg-[#1877F2]/5 px-3 py-2 text-xs text-muted-foreground">
+              By connecting a page to this service, you agree to our{" "}
+              <a
+                className="ulink font-medium text-[#1877F2]"
+                href={PRIVACY_POLICY_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Privacy Policy
+              </a>{" "}
+              (opens in a new tab). Meta will also ask for a privacy policy when your app goes through App Review — you
+              can reuse this same link there.
             </div>
 
             <div className="space-y-1.5">
-              <p className="font-semibold">Step 2 — Grab your Page Access Token (~2 min)</p>
+              <p className="font-semibold">Step 1 — Create a Meta developer account (only if you&apos;re new, ~3 min)</p>
               <ol className="list-decimal list-inside text-muted-foreground space-y-1">
-                <li>Open <a className="ulink" href="https://developers.facebook.com/tools/explorer/" target="_blank" rel="noopener noreferrer">developers.facebook.com/tools/explorer/</a> in the same browser.</li>
-                <li>If an app is selected in the top-right dropdown, switch it to the app you just created.</li>
-                <li>Click <b>Get Page Access Token</b> → tick your page → the big token field fills with a value starting with <code className="text-xs">EAAB…</code>.</li>
-                <li>Click the <b>copy icon</b> on that field.</li>
-                <li className="pt-1 text-xs">Note: this token may expire after a couple of hours — if the bot ever stops replying, just generate a fresh one here and reconnect below.</li>
-              </ol>
-            </div>
-
-            <div className="space-y-1.5">
-              <p className="font-semibold">Step 3 — Connect the page to our system (on this page, ~30 sec)</p>
-              <ol className="list-decimal list-inside text-muted-foreground space-y-1">
-                <li>In <b>Option A</b> below: paste the token into <b>Page Access Token</b>.</li>
-                <li>Paste the <b>App ID</b> and <b>App Secret</b> too — without them the bot cannot receive messages.</li>
-                <li>Click <b>Connect Facebook Page</b>.</li>
-                <li>Wait for the green message <b>&quot;Page connected — your bot is now live&quot;</b> and your page appearing in the <b>Connected pages</b> list further down.</li>
-              </ol>
-            </div>
-
-            <div className="space-y-1.5">
-              <p className="font-semibold">Step 4 — Switch on incoming messages (webhook, ~3 min)</p>
-              <ol className="list-decimal list-inside text-muted-foreground space-y-1">
-                <li>Copy the green <b>verify token</b> that appeared after connecting (use the Copy button).</li>
-                <li>In your app (<code className="text-xs">developers.facebook.com/apps</code> your app → <b>Messenger → Webhooks</b>) click <b>Edit</b> and paste:</li>
-                <li className="list-none pl-5 space-y-1">
-                  <p><b>Callback URL:</b> <code className="text-xs break-all select-all">https://facebook-page-bot-rdkt.onrender.com/api/webhook</code></p>
-                  <p><b>Verify token:</b> the green token you copied</p>
+                <li>
+                  Open{" "}
+                  <a className="ulink" href="https://developers.facebook.com" target="_blank" rel="noopener noreferrer">
+                    developers.facebook.com
+                  </a>{" "}
+                  in a new tab and log in with the same Facebook account that manages your page.
                 </li>
-                <li>Click <b>Save</b> → you should see <b>&quot;Webhooks are active for: Page&quot;</b>.</li>
+                <li>
+                  If you&apos;ve never logged in here before: click <b>Get Started</b>, accept the Developer Agreement,
+                  and confirm your phone or email when asked.
+                </li>
+                <li>You do <b>not</b> need to write any code — you&apos;re only creating the app we will connect to.</li>
               </ol>
             </div>
 
             <div className="space-y-1.5">
-              <p className="font-semibold">Step 5 — Test the bot</p>
+              <p className="font-semibold">Step 2 — Create your Meta app (~2 min)</p>
               <ol className="list-decimal list-inside text-muted-foreground space-y-1">
-                <li>Log into a <b>second Facebook account</b> (if your app is in Development mode, add that account as a <b>Tester</b> in App Dashboard → <b>App roles</b> first).</li>
-                <li>Send your page a message like &quot;Hi, how much does your service cost?&quot;.</li>
+                <li>
+                  On developers.facebook.com click <b>Create App</b> → choose <b>Business</b> → give it a name (e.g.{" "}
+                  <i>&quot;My Shop Bot&quot;</i>) → <b>Create App</b>. Development mode is fine.
+                </li>
+                <li>
+                  Open <b>Settings → Basic</b> and keep this tab open — you&apos;ll need the <b>App ID</b> (a ~12-digit
+                  number) and <b>App Secret</b> (click <b>Show</b> → copy) in Step 5.
+                </li>
+              </ol>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="font-semibold">Step 3 — Add Messenger and connect your page (~2 min)</p>
+              <ol className="list-decimal list-inside text-muted-foreground space-y-1">
+                <li>In your app, click <b>Add Product</b> (left menu) → choose <b>Messenger</b> → <b>Add</b>.</li>
+                <li>
+                  Under <b>Messenger → Access Tokens</b>, click <b>Add or remove Pages</b> and connect the page you want
+                  your bot to run on.
+                </li>
+              </ol>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="font-semibold">Step 4 — Get your Page Access Token (~1 min)</p>
+              <ol className="list-decimal list-inside text-muted-foreground space-y-1">
+                <li>
+                  On the same <b>Messenger → Access Tokens</b> screen, select your page, then <b>generate a token</b>{" "}
+                  for it and copy it (it starts with <code className="text-xs">EAAB…</code>).
+                </li>
+                <li className="pt-1 text-xs">
+                  Note: the token can expire. If the bot ever stops replying, just generate a fresh one here and
+                  reconnect using the card below.
+                </li>
+              </ol>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="font-semibold">Step 5 — Connect your page here (~30 sec)</p>
+              <ol className="list-decimal list-inside text-muted-foreground space-y-1">
+                <li>In the <b>Connect with your token</b> card below, paste the <b>Page Access Token</b>, <b>App ID</b> and <b>App Secret</b> from Steps 2 &amp; 4.</li>
+                <li>Click <b>Connect Facebook Page</b>.</li>
+                <li>
+                  We configure your app&apos;s webhook <b>automatically</b> — you do not need to touch the Meta
+                  dashboard again.
+                </li>
+              </ol>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="font-semibold">Step 6 — Test the bot (~3 min)</p>
+              <ol className="list-decimal list-inside text-muted-foreground space-y-1">
+                <li>
+                  Send your page a message from a <b>second Facebook account</b>. If your app is in Development mode,
+                  first add that account as a <b>Tester</b> in App Dashboard → <b>App roles</b>.
+                </li>
                 <li>Your page should reply within a few seconds.</li>
               </ol>
             </div>
 
             <div className="space-y-1.5">
-              <p className="font-semibold">Step 6 — Feed the bot your business info (optional but recommended)</p>
-              <p className="text-muted-foreground">In the <b>Connected pages</b> list, click <b>Scan business</b> — the bot studies your page&apos;s posts and learns your products, tone and prices automatically.</p>
+              <p className="font-semibold">Step 7 — Go live for real customers (do this before launch)</p>
+              <p className="text-muted-foreground">
+                In Development mode your app can only reply to people you add as Testers. To let real customers use the
+                bot, submit your app for <b>Meta App Review</b> (Messenger permissions) and switch the app to <b>Live</b>.
+                Meta will ask for a Privacy Policy URL — you can use ours from the note at the top of this card.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="font-semibold">Step 8 — Feed the bot your business info (optional but recommended)</p>
+              <p className="text-muted-foreground">
+                In the <b>Connected pages</b> list, click <b>Scan business</b> — the bot studies your page&apos;s posts
+                and learns your products, tone and prices automatically.
+              </p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      <div className="grid lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <div className="w-12 h-12 rounded-xl bg-[#1877F2]/10 flex items-center justify-center mb-2">
-              <ShieldCheck className="w-6 h-6 text-[#1877F2]" />
-            </div>
-            <CardTitle className="text-lg">Option A — We host the app</CardTitle>
-            <CardDescription>Paste a Page Access Token (long-lived). We run the bot app for you.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="pat">Page Access Token *</Label>
-              <Input
-                id="pat"
-                type="password"
-                placeholder="EAAB…"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="aid">App ID * (needed for the bot to receive messages)</Label>
-              <Input id="aid" placeholder="1234567890" value={appId} onChange={(e) => setAppId(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="sec">App Secret * (needed for the bot to receive messages)</Label>
-              <Input
-                id="sec"
-                type="password"
-                placeholder="Used to verify webhook signatures"
-                value={appSecret}
-                onChange={(e) => setAppSecret(e.target.value)}
-              />
-            </div>
+      <Card>
+        <CardHeader>
+          <div className="w-12 h-12 rounded-xl bg-[#1877F2]/10 flex items-center justify-center mb-2">
+            <ShieldCheck className="w-6 h-6 text-[#1877F2]" />
+          </div>
+          <CardTitle className="text-lg">Connect with your token</CardTitle>
+          <CardDescription>
+            Paste the values from your Meta app (Steps 2 &amp; 4 above). We configure the webhook automatically.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="pat">Page Access Token *</Label>
+            <Input
+              id="pat"
+              type="password"
+              placeholder="EAAB…"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="aid">App ID *</Label>
+            <Input id="aid" placeholder="1234567890" value={appId} onChange={(e) => setAppId(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="sec">App Secret *</Label>
+            <Input
+              id="sec"
+              type="password"
+              placeholder="From App Dashboard → Settings → Basic"
+              value={appSecret}
+              onChange={(e) => setAppSecret(e.target.value)}
+            />
+          </div>
 
-            <Button className="w-full" onClick={handleConnect} disabled={loading}>
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
-              Connect Facebook Page
-            </Button>
-            {verifyToken && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
-                <p className="text-xs text-emerald-800">
-                  Your page's webhook verify token — paste this into your Meta app's webhook configuration:
-                </p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 text-[11px] break-all bg-white border rounded px-2 py-1 select-all">{verifyToken}</code>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      navigator.clipboard.writeText(verifyToken)
-                    }}
-                  >
-                    Copy
-                  </Button>
-                </div>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground">
-              The token is stored per page and used only to read and reply to messages.
+          <Button className="w-full" onClick={handleConnect} disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+            Connect Facebook Page
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            The token is stored per page and used only to read and reply to messages. Your app secret is used solely to
+            verify that messages really come from Facebook.
+          </p>
+        </CardContent>
+      </Card>
+
+      <details className="rounded-xl border border-border bg-card overflow-hidden">
+        <summary className="cursor-pointer px-4 py-3 text-sm font-medium hover:bg-muted/60">
+          <span className="flex items-center gap-2">
+            <MessagesSquare className="w-4 h-4 text-[#1877F2]" />
+            Advanced — connect with Facebook Login instead
+          </span>
+        </summary>
+        <div className="border-t px-4 py-4 space-y-4">
+          <CardDescription className="text-xs">
+            Prefer not to paste a token? Log in with Facebook and we pick the token up for you. You&apos;ll need to add
+            the redirect URI below to your app first (App Dashboard → Facebook Login → Settings).
+          </CardDescription>
+          <ol className="text-xs text-muted-foreground list-decimal list-inside space-y-1">
+            <li>Create a Meta app → add the Messenger product to it.</li>
+            <li>Add Messenger API permissions: pages_messaging, pages_manage_metadata, pages_read_engagement, business_management.</li>
+            <li>Add the redirect URI below to App Dashboard → Facebook Login → Settings.</li>
+            <li>Open the Facebook Login URL below in a browser, authorize, and paste the returned code here.</li>
+          </ol>
+          <div className="space-y-2">
+            <Label htmlFor="byoAppId">App ID *</Label>
+            <Input id="byoAppId" placeholder="1234567890" value={byoAppId} onChange={(e) => setByoAppId(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="byoAppSecret">App Secret *</Label>
+            <Input
+              id="byoAppSecret"
+              type="password"
+              placeholder="From App Dashboard → Settings → Basic"
+              value={byoAppSecret}
+              onChange={(e) => setByoAppSecret(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="byoRedirect">Redirect URI *</Label>
+            <Input id="byoRedirect" value={byoRedirect} onChange={(e) => setByoRedirect(e.target.value)} />
+          </div>
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer">Get the login code</summary>
+            <p className="mt-1 break-all select-all">
+              https://www.facebook.com/v26.0/dialog/oauth?client_id={byoAppId || "{APP_ID}"}&amp;redirect_uri={encodeURIComponent(byoRedirect || "{REDIRECT_URI}")}&amp;scope=pages_messaging,pages_manage_metadata,pages_read_engagement,business_management
             </p>
-          </CardContent>
-        </Card>
+            <p className="mt-1">Login, then copy the unique <code>code</code> param from the URL bar.</p>
+          </details>
+          <div className="space-y-2">
+            <Label htmlFor="byoCode">Login code *</Label>
+            <Input id="byoCode" placeholder="AQD…" value={byoCode} onChange={(e) => setByoCode(e.target.value)} />
+          </div>
 
-        <Card>
-          <CardHeader>
-            <div className="w-12 h-12 rounded-xl bg-[#1877F2]/10 flex items-center justify-center mb-2">
-              <MessagesSquare className="w-6 h-6 text-[#1877F2]" />
-            </div>
-            <CardTitle className="text-lg">Option B — Your own Meta app</CardTitle>
-            <CardDescription>Connect the app you created in the Meta Developer Dashboard. We wire up the webhook for you.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <ol className="text-xs text-muted-foreground list-decimal list-inside space-y-1">
-              <li>Create a Meta app → add the Messenger product to it.</li>
-              <li>Add the Messenger API permissions: pages_messaging, pages_manage_metadata, pages_read_engagement, business_management.</li>
-              <li>In App Dashboard → Messenger → OAuth, add the redirect URI from the field below.</li>
-              <li>Open the Facebook Login URL below in a browser, authorize, and paste the returned code here.</li>
-            </ol>
-            <div className="space-y-2">
-              <Label htmlFor="byoAppId">App ID *</Label>
-              <Input id="byoAppId" placeholder="1234567890" value={byoAppId} onChange={(e) => setByoAppId(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="byoAppSecret">App Secret *</Label>
-              <Input
-                id="byoAppSecret"
-                type="password"
-                placeholder="From App Dashboard → Settings → Basic"
-                value={byoAppSecret}
-                onChange={(e) => setByoAppSecret(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="byoRedirect">Redirect URI *</Label>
-              <Input id="byoRedirect" value={byoRedirect} onChange={(e) => setByoRedirect(e.target.value)} />
-            </div>
-            <details className="text-xs text-muted-foreground">
-              <summary className="cursor-pointer">Get the login code</summary>
-              <p className="mt-1 break-all select-all">
-                https://www.facebook.com/v26.0/dialog/oauth?client_id={byoAppId || "{APP_ID}"}&amp;redirect_uri={encodeURIComponent(byoRedirect || "{REDIRECT_URI}")}&amp;scope=pages_messaging,pages_manage_metadata,pages_read_engagement,business_management
-              </p>
-              <p className="mt-1">Login, then copy the unique <code>code</code> param from the URL bar.</p>
-            </details>
-            <div className="space-y-2">
-              <Label htmlFor="byoCode">Login code *</Label>
-              <Input id="byoCode" placeholder="AQD…" value={byoCode} onChange={(e) => setByoCode(e.target.value)} />
-            </div>
-
-            <Button className="w-full" onClick={handleConnectByo} disabled={loading}>
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
-              Connect My Meta App
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+          <Button className="w-full" variant="outline" onClick={handleConnectByo} disabled={loading}>
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link2 className="w-4 h-4" />}
+            Connect My Meta App
+          </Button>
+        </div>
+      </details>
 
       <Card>
         <CardHeader>
