@@ -189,7 +189,7 @@ async def get_user(user_id: str, admin: User = Depends(require_admin), db=Depend
 
     pages = (await db.execute(select(FacebookPage).where(FacebookPage.user_id == user_id))).scalars().all()
     products = (await db.execute(select(func.count(Product.id)).where(Product.user_id == user_id))).scalar() or 0
-    conversations = (await db.execute(select(func.count(Conversation.id)).where(Conversation.user_id == user_id))).scalar() or 0
+    conversations = (await db.execute(select(func.count(Conversation.id)).join(FacebookPage, Conversation.page_id == FacebookPage.id).where(FacebookPage.user_id == user_id))).scalar() or 0
     kb = (await db.execute(select(func.count(KnowledgeBase.id)).where(KnowledgeBase.user_id == user_id))).scalar() or 0
 
     return {

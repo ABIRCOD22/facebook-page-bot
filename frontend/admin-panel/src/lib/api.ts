@@ -29,7 +29,27 @@ class AdminApiClient {
     }
     if (token) headers["Authorization"] = `Bearer ${token}`
 
-    const res = await fetch(`${this.baseUrl}${path}`, { ...options, headers })
+    // Render free tier sleeps after ~15 min idle; the first request wakes it
+    // and can take 30-60s to come back. Retry network-level failures
+    // (TypeError/abort) with a per-attempt timeout covering the wake window —
+    // HTTP errors pass through untouched.
+    let response: Response | null = null
+    let lastErr: unknown
+    for (let attempt = 0; attempt <= 2; attempt++) {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 90_000)
+      try {
+        response = await fetch(`${this.baseUrl}${path}`, { ...options, headers, signal: controller.signal })
+        break
+      } catch (err) {
+        lastErr = err
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 2500))
+      } finally {
+        clearTimeout(timer)
+      }
+    }
+    if (!response) throw lastErr
+    const res = response
     if (res.status === 204) return undefined as T
     if (!res.ok) {
       const error: any = await res.json().catch(() => ({ detail: "Request failed" }))
