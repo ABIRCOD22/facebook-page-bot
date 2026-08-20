@@ -161,6 +161,12 @@ class ApiClient {
     return this.request<{ status: string }>(`/api/client/products/${id}`, { method: "DELETE" })
   }
 
+  async scanProducts() {
+    return this.request<{ imported: number; skipped: number; total_found: number }>("/api/client/scan-products", {
+      method: "POST",
+    })
+  }
+
   // ---- Knowledge ----
   async listKnowledge(search = "") {
     const qs = search ? `?search=${encodeURIComponent(search)}` : ""
